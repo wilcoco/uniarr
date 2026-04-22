@@ -111,5 +111,20 @@ namespace GuardianAR
 
         public void UseUltimate(string visitorId, string battleId, Action<string> cb, Action<string> err = null)
             => Post("/api/battle/ultimate", new { visitorId, battleId }, cb, err);
+
+        // ─── 즉시 공격 (영역/플레이어) ────────────────────────────────
+        public void Attack(string attackerId, string defenderId, string territoryId, Action<string> cb, Action<string> err = null)
+            => Post("/api/battle/attack", new { attackerId, defenderId, territoryId }, cb, err);
+
+        // ─── 동맹 요청/응답 ────────────────────────────────────────────
+        public void RequestAlliance(string requesterId, string targetId, Action<string> cb, Action<string> err = null)
+            => Post("/api/battle/alliance-request", new { requesterId, targetId }, cb, err);
+
+        public void RespondAlliance(string requestId, bool accept, Action<string> cb, Action<string> err = null)
+            => Post("/api/battle/alliance-respond", new { requestId, accept }, cb, err);
+
+        // ─── FCM 토큰 등록 ─────────────────────────────────────────────
+        public void RegisterFcmToken(string userId, string fcmToken, Action<string> cb = null)
+            => Post("/api/battle/fcm-token", new { userId, fcmToken }, cb);
     }
 }

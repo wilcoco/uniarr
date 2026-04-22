@@ -6,14 +6,19 @@ using TMPro;
 namespace GuardianAR
 {
     /// <summary>
-    /// 전투/동맹 모달 — 맵·AR 공통 오버레이
+    /// 전투/동맹 모달
+    /// - 플레이어 탭 → 공격 or 동맹 선택
+    /// - 공격: 즉시 결과 표시 + 방어자는 푸시 알림 수신
+    /// - 동맹: 요청 전송 + 상대 푸시 알림
     /// </summary>
     public class BattleModal : MonoBehaviour
     {
+        public static BattleModal Instance { get; private set; }
+
         [Header("패널들")]
-        [SerializeField] private GameObject encounterPanel;   // 선택 단계
-        [SerializeField] private GameObject animatingPanel;  // 전투 연출
-        [SerializeField] private GameObject resultPanel;     // 결과
+        [SerializeField] private GameObject encounterPanel;
+        [SerializeField] private GameObject animatingPanel;
+        [SerializeField] private GameObject resultPanel;
 
         [Header("Encounter 패널")]
         [SerializeField] private TextMeshProUGUI encounterTitle;
@@ -32,118 +37,147 @@ namespace GuardianAR
         [SerializeField] private TextMeshProUGUI absorbText;
         [SerializeField] private Button resultCloseButton;
 
+        private NearbyPlayer currentTarget;
+        private Territory currentTerritory;
+
+        void Awake()
+        {
+            if (Instance != null) { Destroy(gameObject); return; }
+            Instance = this;
+        }
+
         void Start()
         {
-            GameManager.Instance.OnBattleTriggered += OnBattleTriggered;
-            GameManager.Instance.OnBattleEnded += () => gameObject.SetActive(false);
-
-            battleButton.onClick.AddListener(() => OnChoice("battle"));
-            allianceButton.onClick.AddListener(() => OnChoice("alliance"));
-            closeButton.onClick.AddListener(OnClose);
-            resultCloseButton.onClick.AddListener(OnClose);
-
+            battleButton.onClick.AddListener(OnAttack);
+            allianceButton.onClick.AddListener(OnAllianceRequest);
+            closeButton.onClick.AddListener(Hide);
+            resultCloseButton.onClick.AddListener(Hide);
             gameObject.SetActive(false);
         }
 
-        void OnDestroy()
+        // ─── 플레이어 마커 탭 시 호출 ────────────────────────────────
+        public void ShowPlayerMenu(NearbyPlayer player)
         {
-            if (GameManager.Instance != null)
-                GameManager.Instance.OnBattleTriggered -= OnBattleTriggered;
-        }
+            currentTarget    = player;
+            currentTerritory = null;
 
-        private void OnBattleTriggered(CurrentBattle battle)
-        {
             gameObject.SetActive(true);
-            ShowEncounterPanel(battle);
-        }
-
-        private void ShowEncounterPanel(CurrentBattle battle)
-        {
             encounterPanel.SetActive(true);
             animatingPanel.SetActive(false);
             resultPanel.SetActive(false);
 
-            switch (battle.status)
+            string emoji = player.guardian?.type switch
             {
-                case BattleStatus.IntrusionDetected:
-                    encounterTitle.text = "영역 침입!";
-                    encounterDesc.text = $"{battle.territory?.userId ?? "적"}의 영역에 침입했습니다.";
-                    allianceButton.gameObject.SetActive(true);
-                    break;
-
-                case BattleStatus.PlayerEncounter:
-                    var p = battle.targetPlayer;
-                    string emoji = p.guardian?.type switch
-                    {
-                        "animal" => "🦁", "robot" => "🤖", "aircraft" => "✈", _ => "👤"
-                    };
-                    encounterTitle.text = $"{emoji} {p.username}";
-                    encounterDesc.text = $"ATK:{p.guardian?.stats?.atk} DEF:{p.guardian?.stats?.def} HP:{p.guardian?.stats?.hp}";
-                    allianceButton.gameObject.SetActive(true);
-                    break;
-
-                case BattleStatus.FixedGuardianAttack:
-                    var fg = battle.targetFixedGuardian;
-                    encounterTitle.text = $"{(fg.type == "production" ? "⚙" : "🛡")} {fg.owner}의 수호신";
-                    encounterDesc.text = $"ATK:{fg.Atk} DEF:{fg.Def} HP:{fg.Hp}";
-                    allianceButton.gameObject.SetActive(false); // 고정 수호신은 동맹 불가
-                    break;
-            }
+                "animal" => "🦁", "robot" => "🤖", "aircraft" => "✈", _ => "👤"
+            };
+            encounterTitle.text = $"{emoji} {player.username}";
+            encounterDesc.text = player.guardian != null
+                ? $"ATK:{player.guardian.stats?.atk}  DEF:{player.guardian.stats?.def}  HP:{player.guardian.stats?.hp}"
+                : "수호신 없음";
+            allianceButton.gameObject.SetActive(true);
         }
 
-        private void OnChoice(string choice)
+        // ─── 고정 수호신 탭 시 호출 ──────────────────────────────────
+        public void ShowFixedGuardianMenu(FixedGuardian fg)
         {
-            encounterPanel.SetActive(false);
-            animatingPanel.SetActive(true);
+            currentTarget    = null;
+            currentTerritory = null;
 
-            var battle = GameManager.Instance.ActiveBattle;
-            if (battle != null)
+            gameObject.SetActive(true);
+            encounterPanel.SetActive(true);
+            animatingPanel.SetActive(false);
+            resultPanel.SetActive(false);
+
+            encounterTitle.text = $"{(fg.type == "production" ? "⚙" : "🛡")} {fg.owner}의 수호신";
+            encounterDesc.text  = $"ATK:{fg.Atk}  DEF:{fg.Def}  HP:{fg.Hp}";
+            allianceButton.gameObject.SetActive(false);
+
+            // 고정 수호신 공격은 기존 API 사용
+            battleButton.onClick.RemoveAllListeners();
+            battleButton.onClick.AddListener(() =>
             {
-                string attName = GameManager.Instance.VisitorId;
-                string defName = battle.status == BattleStatus.PlayerEncounter
-                    ? battle.targetPlayer.username
-                    : battle.targetFixedGuardian?.owner ?? "방어자";
-
-                vs1Text.text = attName;
-                vs2Text.text = defName;
-                powerText.text = "전투 중...";
-            }
-
-            GameManager.Instance.RespondToBattle(choice, result =>
-            {
-                if (result == null)
+                ShowAnimating("나", $"{fg.owner}의 수호신");
+                GameManager.Instance.InitiateFixedGuardianAttack(fg);
+                GameManager.Instance.RespondToBattle("battle", result =>
                 {
-                    // 동맹 또는 실패
-                    GameManager.Instance.EndBattle();
-                    return;
-                }
-                StartCoroutine(ShowResult(result));
+                    if (result != null) StartCoroutine(ShowResult(result));
+                    else Hide();
+                });
             });
         }
 
+        // ─── 공격 선택 ────────────────────────────────────────────────
+        private void OnAttack()
+        {
+            if (currentTarget == null) return;
+
+            ShowAnimating("나", currentTarget.username);
+
+            GameManager.Instance.AttackPlayer(currentTarget, result =>
+            {
+                if (result != null) StartCoroutine(ShowResult(result));
+                else Hide();
+            });
+        }
+
+        // ─── 동맹 요청 ────────────────────────────────────────────────
+        private void OnAllianceRequest()
+        {
+            if (currentTarget == null) return;
+
+            allianceButton.interactable = false;
+            GameManager.Instance.RequestAlliance(currentTarget, success =>
+            {
+                if (success)
+                {
+                    encounterTitle.text = "🤝 동맹 요청 전송!";
+                    encounterDesc.text  = $"{currentTarget.username}에게 동맹 요청을 보냈습니다.";
+                }
+                else
+                {
+                    encounterDesc.text = "동맹 요청에 실패했습니다.";
+                }
+                allianceButton.interactable = true;
+            });
+        }
+
+        // ─── 전투 연출 패널 ───────────────────────────────────────────
+        private void ShowAnimating(string attacker, string defender)
+        {
+            encounterPanel.SetActive(false);
+            animatingPanel.SetActive(true);
+            resultPanel.SetActive(false);
+            vs1Text.text   = attacker;
+            vs2Text.text   = defender;
+            powerText.text = "전투 중...";
+        }
+
+        // ─── 결과 표시 ────────────────────────────────────────────────
         private IEnumerator ShowResult(BattleResult result)
         {
-            // 4초 연출 대기
-            yield return new WaitForSeconds(4f);
+            yield return new WaitForSeconds(2f);
 
             animatingPanel.SetActive(false);
             resultPanel.SetActive(true);
 
             bool iWon = result.winner == "attacker";
-            winnerText.text = iWon ? "🎉 승리!" : "💀 패배...";
+            winnerText.text  = iWon ? "🎉 승리!" : "💀 패배...";
             winnerText.color = iWon ? Color.green : Color.red;
-
-            powerText.text = $"내 전투력: {result.attackerPower}  vs  상대: {result.defenderPower}";
-
-            if (result.absorbed != null && iWon)
-                absorbText.text = $"흡수: ATK+{result.absorbed.atk} DEF+{result.absorbed.def} HP+{result.absorbed.hp}";
-            else
-                absorbText.text = "";
+            powerText.text   = $"전투력 {result.attackerPower} vs {result.defenderPower}";
+            absorbText.text  = iWon && result.absorbed != null
+                ? $"흡수: ATK+{result.absorbed.atk}  DEF+{result.absorbed.def}  HP+{result.absorbed.hp}"
+                : "";
         }
 
-        private void OnClose()
+        private void Hide()
         {
-            GameManager.Instance.EndBattle();
+            currentTarget    = null;
+            currentTerritory = null;
+            gameObject.SetActive(false);
+
+            // 버튼 리스너 원상복구
+            battleButton.onClick.RemoveAllListeners();
+            battleButton.onClick.AddListener(OnAttack);
         }
     }
 }

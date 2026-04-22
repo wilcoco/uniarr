@@ -104,7 +104,6 @@ namespace GuardianAR
             if (string.IsNullOrEmpty(UserId)) return;
 
             RefreshNearby(loc);
-            CheckIntrusion(loc);
         }
 
         private void RefreshNearby(LatLng loc)
@@ -131,26 +130,35 @@ namespace GuardianAR
             });
         }
 
-        private void CheckIntrusion(LatLng loc)
+        // ─── 즉시 공격 (플레이어가 직접 선택) ────────────────────────
+        public void AttackPlayer(NearbyPlayer target, Action<BattleResult> callback)
         {
-            ApiManager.Instance.CheckIntrusion(UserId, loc.lat, loc.lng, json =>
+            ApiManager.Instance.Attack(UserId, target.id, null, json =>
             {
-                var resp = JsonUtility.FromJson<IntrusionResponse>(json);
-                if (resp.intruded && resp.territory != null)
-                {
-                    if (resp.territory.id == LastIntrudedTerritoryId) return;
+                var result = JsonUtility.FromJson<BattleResult>(json);
+                ActiveBattle = new CurrentBattle { status = BattleStatus.PlayerEncounter, targetPlayer = target, result = result };
+                callback?.Invoke(result);
+                LoadUserData();
+            });
+        }
 
-                    LastIntrudedTerritoryId = resp.territory.id;
-                    TriggerBattle(new CurrentBattle
-                    {
-                        status = BattleStatus.IntrusionDetected,
-                        territory = resp.territory
-                    });
-                }
-                else
-                {
-                    LastIntrudedTerritoryId = null;
-                }
+        public void AttackTerritory(Territory territory, Action<BattleResult> callback)
+        {
+            ApiManager.Instance.Attack(UserId, territory.userId, territory.id, json =>
+            {
+                var result = JsonUtility.FromJson<BattleResult>(json);
+                ActiveBattle = new CurrentBattle { status = BattleStatus.IntrusionDetected, territory = territory, result = result };
+                callback?.Invoke(result);
+                LoadUserData();
+            });
+        }
+
+        public void RequestAlliance(NearbyPlayer target, Action<bool> callback)
+        {
+            ApiManager.Instance.RequestAlliance(UserId, target.id, json =>
+            {
+                var resp = JsonUtility.FromJson<AllianceRequestResponse>(json);
+                callback?.Invoke(resp.success);
             });
         }
 
@@ -332,6 +340,12 @@ namespace GuardianAR
         {
             public bool success;
             public Territory territory;
+            public string error;
+        }
+        [Serializable] private class AllianceRequestResponse
+        {
+            public bool success;
+            public string requestId;
             public string error;
         }
     }

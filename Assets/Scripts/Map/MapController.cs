@@ -131,10 +131,9 @@ namespace GuardianAR
                 if (!playerMarkers.ContainsKey(p.id))
                 {
                     var obj = Instantiate(otherPlayerPrefab, markerContainer);
-                    // 클릭 이벤트 연결
                     var btn = obj.GetComponentInChildren<Button>();
                     var captured = p;
-                    btn?.onClick.AddListener(() => GameManager.Instance.InitiatePlayerEncounter(captured));
+                    btn?.onClick.AddListener(() => ShowPlayerActionMenu(captured));
                     playerMarkers[p.id] = obj;
                 }
 
@@ -161,6 +160,13 @@ namespace GuardianAR
                 fixedGuardianMarkers[fg.id].GetComponent<RectTransform>().anchoredPosition =
                     tileManager.GPSToCanvasPosition(fg.position);
             }
+        }
+
+        // ─── 플레이어 액션 메뉴 (공격 or 동맹) ───────────────────────
+        private void ShowPlayerActionMenu(NearbyPlayer player)
+        {
+            // BattleModal을 통해 선택지 표시
+            BattleModal.Instance?.ShowPlayerMenu(player);
         }
 
         // ─── AR 전환 ───────────────────────────────────────────────────
