@@ -73,7 +73,7 @@ namespace GuardianAR
             encounterTitle.text = $"{emoji} {player.username}";
             encounterDesc.text = player.guardian != null
                 ? $"ATK:{player.guardian.stats?.atk}  DEF:{player.guardian.stats?.def}  HP:{player.guardian.stats?.hp}"
-                : "수호신 없음";
+                : "No Guardian";
             allianceButton.gameObject.SetActive(true);
         }
 
@@ -88,7 +88,7 @@ namespace GuardianAR
             animatingPanel.SetActive(false);
             resultPanel.SetActive(false);
 
-            encounterTitle.text = $"{(fg.type == "production" ? "⚙" : "🛡")} {fg.owner}의 수호신";
+            encounterTitle.text = $"{(fg.type == "production" ? "⚙" : "🛡")} {fg.owner}'s Guardian";
             encounterDesc.text  = $"ATK:{fg.Atk}  DEF:{fg.Def}  HP:{fg.Hp}";
             allianceButton.gameObject.SetActive(false);
 
@@ -96,7 +96,7 @@ namespace GuardianAR
             battleButton.onClick.RemoveAllListeners();
             battleButton.onClick.AddListener(() =>
             {
-                ShowAnimating("나", $"{fg.owner}의 수호신");
+                ShowAnimating("Me", $"{fg.owner}'s Guardian");
                 GameManager.Instance.InitiateFixedGuardianAttack(fg);
                 GameManager.Instance.RespondToBattle("battle", result =>
                 {
@@ -111,7 +111,7 @@ namespace GuardianAR
         {
             if (currentTarget == null) return;
 
-            ShowAnimating("나", currentTarget.username);
+            ShowAnimating("Me", currentTarget.username);
 
             GameManager.Instance.AttackPlayer(currentTarget, result =>
             {
@@ -130,12 +130,12 @@ namespace GuardianAR
             {
                 if (success)
                 {
-                    encounterTitle.text = "🤝 동맹 요청 전송!";
-                    encounterDesc.text  = $"{currentTarget.username}에게 동맹 요청을 보냈습니다.";
+                    encounterTitle.text = "Alliance Requested!";
+                    encounterDesc.text  = $"Alliance request sent to {currentTarget.username}.";
                 }
                 else
                 {
-                    encounterDesc.text = "동맹 요청에 실패했습니다.";
+                    encounterDesc.text = "Alliance request failed.";
                 }
                 allianceButton.interactable = true;
             });
@@ -149,7 +149,7 @@ namespace GuardianAR
             resultPanel.SetActive(false);
             vs1Text.text   = attacker;
             vs2Text.text   = defender;
-            powerText.text = "전투 중...";
+            powerText.text = "Fighting...";
         }
 
         // ─── 결과 표시 ────────────────────────────────────────────────
@@ -161,11 +161,11 @@ namespace GuardianAR
             resultPanel.SetActive(true);
 
             bool iWon = result.winner == "attacker";
-            winnerText.text  = iWon ? "🎉 승리!" : "💀 패배...";
+            winnerText.text  = iWon ? "Victory!" : "Defeat...";
             winnerText.color = iWon ? Color.green : Color.red;
-            powerText.text   = $"전투력 {result.attackerPower} vs {result.defenderPower}";
+            powerText.text   = $"Power {result.attackerPower} vs {result.defenderPower}";
             absorbText.text  = iWon && result.absorbed != null
-                ? $"흡수: ATK+{result.absorbed.atk}  DEF+{result.absorbed.def}  HP+{result.absorbed.hp}"
+                ? $"Absorbed: ATK+{result.absorbed.atk}  DEF+{result.absorbed.def}  HP+{result.absorbed.hp}"
                 : "";
         }
 

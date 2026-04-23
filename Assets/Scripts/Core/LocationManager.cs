@@ -43,7 +43,7 @@ namespace GuardianAR
             // 권한 확인
             if (!Input.location.isEnabledByUser)
             {
-                OnLocationError?.Invoke("위치 권한이 필요합니다. 설정에서 권한을 허용해주세요.");
+                OnLocationError?.Invoke("Location permission required. Please enable it in Settings.");
                 yield break;
             }
 
@@ -58,7 +58,7 @@ namespace GuardianAR
 
             if (timeout <= 0 || Input.location.status == LocationServiceStatus.Failed)
             {
-                OnLocationError?.Invoke("위치를 가져올 수 없습니다.");
+                OnLocationError?.Invoke("Failed to get location.");
                 yield break;
             }
 

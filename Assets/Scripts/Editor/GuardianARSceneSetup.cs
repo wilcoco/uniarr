@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
+using UnityEngine.EventSystems;
 using TMPro;
 using GuardianAR;
 
@@ -21,17 +22,24 @@ public class GuardianARSceneSetup : Editor
         // 기존 루트 오브젝트 정리
         foreach (var name in new[] {
             "Bootstrap", "Managers", "ModeController",
-            "MapModeRoot", "ARModeRoot", "HUD" })
+            "MapModeRoot", "ARModeRoot", "HUD", "EventSystem" })
         {
             var existing = GameObject.Find(name);
             if (existing != null) DestroyImmediate(existing);
         }
+
+        // EventSystem (버튼 클릭 필수)
+        var eventSystemGO = new GameObject("EventSystem");
+        eventSystemGO.AddComponent<EventSystem>();
+        eventSystemGO.AddComponent<StandaloneInputModule>();
 
         // ── 1. Managers ──────────────────────────────────────────────
         var managers = CreateEmpty("Managers");
         var apiManagerGO   = CreateEmpty("ApiManager",   managers); apiManagerGO.AddComponent<ApiManager>();
         var locationMgrGO  = CreateEmpty("LocationManager", managers); locationMgrGO.AddComponent<LocationManager>();
         var gameMgrGO      = CreateEmpty("GameManager",  managers); gameMgrGO.AddComponent<GameManager>();
+        CreateEmpty("MainThreadDispatcher", managers).AddComponent<MainThreadDispatcher>();
+        CreateEmpty("FirebaseManager",      managers).AddComponent<FirebaseManager>();
 
         // ── 2. Bootstrap ─────────────────────────────────────────────
         var bootstrap = CreateEmpty("Bootstrap");
@@ -65,7 +73,7 @@ public class GuardianARSceneSetup : Editor
         StretchFill(overlayRt);
 
         // AR 모드 전환 버튼
-        var arModeBtn = CreateButton("ARModeButton", overlayRt, "📷 AR 모드");
+        var arModeBtn = CreateButton("ARModeButton", overlayRt, "AR Mode");
         PlaceBottom(arModeBtn.GetComponent<RectTransform>(), 150f, 50f, 0f);
         arModeBtn.GetComponent<UnityEngine.UI.Image>().color = new Color(0.1f, 0.6f, 1f);
 
@@ -123,8 +131,8 @@ public class GuardianARSceneSetup : Editor
 
         // ARModeController UI 버튼
         var arUICanvas  = CreateUICanvas("AR_UI_Canvas", arCtrlGO.transform);
-        var backBtn     = CreateButton("BackToMapButton", arUICanvas.transform, "◀ 지도");
-        var placeBtn    = CreateButton("PlaceGuardianButton", arUICanvas.transform, "🛡 고정 수호신 배치");
+        var backBtn     = CreateButton("BackToMapButton", arUICanvas.transform, "< Map");
+        var placeBtn    = CreateButton("PlaceGuardianButton", arUICanvas.transform, "Place Guardian");
         PlaceTopLeft(backBtn.GetComponent<RectTransform>(),  120f, 44f, 10f, -10f);
         PlaceTopRight(placeBtn.GetComponent<RectTransform>(), 180f, 44f, -10f, -10f);
         SetPrivateField(arCtrl, "backToMapButton",     backBtn.GetComponent<Button>());
@@ -153,12 +161,12 @@ public class GuardianARSceneSetup : Editor
         var battleStatusLabel  = CreateTMPLabel("BattleStatusText", battleCanvas2.transform, "", 40, TextAlignmentOptions.Center);
         PlaceCenter(battleStatusLabel.GetComponent<RectTransform>(), 300f, 60f, 0f, 60f);
 
-        var ultPromptLabel = CreateTMPLabel("UltimatePrompt", battleCanvas2.transform, "⚡ 궁극기 사용 가능!", 22, TextAlignmentOptions.Center);
+        var ultPromptLabel = CreateTMPLabel("UltimatePrompt", battleCanvas2.transform, "⚡ Ultimate Ready!", 22, TextAlignmentOptions.Center);
         PlaceCenter(ultPromptLabel.GetComponent<RectTransform>(), 250f, 40f, 0f, -80f);
         ultPromptLabel.color = Color.yellow;
 
-        var ultBtn  = CreateButton("UltimateButton",  battleCanvas2.transform, "⚡ 궁극기");
-        var skipBtn = CreateButton("SkipButton",       battleCanvas2.transform, "건너뛰기");
+        var ultBtn  = CreateButton("UltimateButton",  battleCanvas2.transform, "⚡ Ultimate");
+        var skipBtn = CreateButton("SkipButton",       battleCanvas2.transform, "Skip");
         PlaceCenter(ultBtn.GetComponent<RectTransform>(),  130f, 44f, -75f, -130f);
         PlaceCenter(skipBtn.GetComponent<RectTransform>(), 100f, 44f,  75f, -130f);
 
@@ -172,9 +180,9 @@ public class GuardianARSceneSetup : Editor
         var resultCanvas = CreateUICanvas("ResultCanvas", battleMgrGO.transform);
         var resultPanel  = CreatePanel("ResultPanel", resultCanvas.transform, new Color(0f, 0f, 0f, 0.9f));
         StretchFill(resultPanel.GetComponent<RectTransform>(), 80f, 80f, -80f, -80f);
-        var resultTitle  = CreateTMPLabel("ResultTitle",  resultPanel.transform, "결과",    48, TextAlignmentOptions.Center);
+        var resultTitle  = CreateTMPLabel("ResultTitle",  resultPanel.transform, "Result",    48, TextAlignmentOptions.Center);
         var resultDetail = CreateTMPLabel("ResultDetail", resultPanel.transform, "",         22, TextAlignmentOptions.Center);
-        var resultClose  = CreateButton("ResultCloseButton", resultPanel.transform, "확인");
+        var resultClose  = CreateButton("ResultCloseButton", resultPanel.transform, "OK");
         PlaceCenter(resultTitle.GetComponent<RectTransform>(),  300f, 60f,  0f,  60f);
         PlaceCenter(resultDetail.GetComponent<RectTransform>(), 280f, 80f,  0f,  -10f);
         PlaceCenter(resultClose.GetComponent<RectTransform>(),  140f, 44f,  0f, -80f);
@@ -203,7 +211,12 @@ public class GuardianARSceneSetup : Editor
         BuildBattleModalUI(battleModal, battleModalCanvas.transform);
         battleModalCanvas.gameObject.SetActive(false);
 
-        // ── 6. ModeController ─────────────────────────────────────────
+        // ── 6. EditorGPSDebug (에디터 전용) ──────────────────────────
+#if UNITY_EDITOR
+        BuildGPSDebugPanel();
+#endif
+
+        // ── 7. ModeController ─────────────────────────────────────────
         var modeCtrlGO = CreateEmpty("ModeController");
         var modeCtrl   = modeCtrlGO.AddComponent<ModeController>();
         SetPrivateField(modeCtrl, "mapModeRoot",     mapRoot);
@@ -217,15 +230,108 @@ public class GuardianARSceneSetup : Editor
             .GetRootGameObjects()[0]);
         UnityEditor.SceneManagement.EditorSceneManager.SaveOpenScenes();
 
-        EditorUtility.DisplayDialog("완료",
-            "씬 구성이 완료되었습니다!\n\n남은 작업:\n" +
-            "① Guardian AR → Settings 에서 서버 URL 확인\n" +
-            "② AR 수호신 Prefab 연결 (ARModeController)\n" +
-            "③ 마커 Prefab 연결 (MapController)\n" +
-            "④ HP Bar / 데미지 숫자 Prefab 연결 (ARBattleManager)",
-            "확인");
+        EditorUtility.DisplayDialog("Done",
+            "Scene setup complete!\n\nRemaining steps:\n" +
+            "1. Guardian AR > Settings - check server URL\n" +
+            "2. Connect AR Guardian Prefabs (ARModeController)\n" +
+            "3. Connect Marker Prefabs (MapController)\n" +
+            "4. Connect HP Bar / Damage Number Prefabs (ARBattleManager)",
+            "OK");
 
-        Debug.Log("[GuardianAR] 씬 구성 완료!");
+        Debug.Log("[GuardianAR] Scene setup complete!");
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // 에디터 GPS 디버그 패널
+    // ─────────────────────────────────────────────────────────────────
+    static void BuildGPSDebugPanel()
+    {
+        var canvas = CreateUICanvas("EditorGPSDebug");
+        var debug  = canvas.gameObject.AddComponent<GuardianAR.EditorGPSDebug>();
+
+        // 패널 (우하단)
+        var panel = CreatePanel("Panel", canvas.transform, new Color(0f, 0f, 0f, 0.88f));
+        var rt = panel.GetComponent<RectTransform>();
+        rt.anchorMin = new Vector2(1f, 0f);
+        rt.anchorMax = new Vector2(1f, 0f);
+        rt.pivot     = new Vector2(1f, 0f);
+        rt.sizeDelta = new Vector2(300f, 300f);
+        rt.anchoredPosition = new Vector2(-10f, 10f);
+
+        CreateTMPLabel("Title", panel.transform, "[GPS Debug] F1 Toggle", 14, TextAlignmentOptions.Center)
+            .GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 130f);
+
+        var currentLocLabel = CreateTMPLabel("CurrentLoc", panel.transform, "Location: None", 12, TextAlignmentOptions.Center);
+        currentLocLabel.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 105f);
+
+        var latInput = CreateInputField("LatInput", panel.transform, "Latitude (e.g. 37.4981)");
+        var lngInput = CreateInputField("LngInput", panel.transform, "Longitude (e.g. 127.0276)");
+        latInput.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 70f);
+        lngInput.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 35f);
+
+        var applyBtn = CreateButton("ApplyBtn", panel.transform, "Apply");
+        applyBtn.GetComponent<RectTransform>().sizeDelta = new Vector2(260f, 32f);
+        applyBtn.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 5f);
+        applyBtn.GetComponent<Image>().color = new Color(0.2f, 0.6f, 1f);
+
+        string[] presets = { "Gangnam", "Hongdae", "Gwanghwa", "Yeouido", "Jamsil" };
+        float[] xPos = { -104f, -52f, 0f, 52f, 104f };
+        for (int i = 0; i < presets.Length; i++)
+        {
+            int idx = i;
+            var btn = CreateButton($"Preset{i}", panel.transform, presets[i]);
+            btn.GetComponent<RectTransform>().sizeDelta = new Vector2(48f, 28f);
+            btn.GetComponent<RectTransform>().anchoredPosition = new Vector2(xPos[i], -30f);
+            btn.GetComponent<Image>().color = new Color(0.25f, 0.25f, 0.3f);
+        }
+
+        SetPrivateField(debug, "panel",          panel);
+        SetPrivateField(debug, "latInput",        latInput.GetComponent<TMP_InputField>());
+        SetPrivateField(debug, "lngInput",        lngInput.GetComponent<TMP_InputField>());
+        SetPrivateField(debug, "currentLocText",  currentLocLabel);
+
+        // 버튼 이벤트는 런타임에 EditorGPSDebug가 처리
+        applyBtn.GetComponent<Button>().onClick.AddListener(debug.ApplyManual);
+        for (int i = 0; i < presets.Length; i++)
+        {
+            int idx = i;
+            panel.transform.Find($"Preset{i}").GetComponent<Button>()
+                .onClick.AddListener(() => debug.ApplyPreset(idx));
+        }
+    }
+
+    static GameObject CreateInputField(string name, Transform parent, string placeholder)
+    {
+        var go  = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        go.AddComponent<Image>().color = new Color(0.15f, 0.15f, 0.2f);
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.sizeDelta = new Vector2(260f, 28f);
+
+        var inputField = go.AddComponent<TMP_InputField>();
+
+        var textArea = new GameObject("Text Area");
+        textArea.transform.SetParent(go.transform, false);
+        StretchFill(textArea.AddComponent<RectTransform>(), 4f, 0f, -4f, 0f);
+
+        var placeholderGO = new GameObject("Placeholder");
+        placeholderGO.transform.SetParent(textArea.transform, false);
+        var ph = placeholderGO.AddComponent<TextMeshProUGUI>();
+        ph.text = placeholder; ph.fontSize = 11f; ph.color = new Color(0.5f, 0.5f, 0.5f);
+        StretchFill(placeholderGO.GetComponent<RectTransform>());
+
+        var textGO = new GameObject("Text");
+        textGO.transform.SetParent(textArea.transform, false);
+        var txt = textGO.AddComponent<TextMeshProUGUI>();
+        txt.fontSize = 12f; txt.color = Color.white;
+        StretchFill(textGO.GetComponent<RectTransform>());
+
+        inputField.textViewport  = textArea.GetComponent<RectTransform>();
+        inputField.textComponent = txt;
+        inputField.placeholder   = ph;
+
+        return go;
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -238,17 +344,16 @@ public class GuardianARSceneSetup : Editor
         // 영역 선택 패널
         var terrPanel = CreatePanel("TerritorySelectPanel", canvas.transform, new Color(0,0,0,0.85f));
         StretchFill(terrPanel.GetComponent<RectTransform>(), 40f, 100f, -40f, -100f);
-        var terrTitle = CreateTMPLabel("Title", terrPanel.transform, "배치할 영역 선택", 24, TextAlignmentOptions.Center);
+        var terrTitle = CreateTMPLabel("Title", terrPanel.transform, "Select Territory", 24, TextAlignmentOptions.Center);
         PlaceTop(terrTitle.GetComponent<RectTransform>(), 300f, 40f, -10f);
         var scrollView = CreateScrollView("TerritoryList", terrPanel.transform);
         StretchFill(scrollView.GetComponent<RectTransform>(), 10f, 55f, -10f, -10f);
         terrPanel.SetActive(false);
 
-        // 스캔 안내 패널
         var scanPanel = CreatePanel("ScanHintPanel", canvas.transform, new Color(0,0,0,0.7f));
         PlaceBottom(scanPanel.GetComponent<RectTransform>(), 340f, 70f, -120f);
         CreateTMPLabel("ScanText", scanPanel.transform,
-            "📱 카메라를 바닥으로 향해 스캔하세요\n바닥 감지 후 화면을 탭하여 위치를 선택합니다",
+            "Point camera at the floor to scan\nTap to place after surface detected",
             18, TextAlignmentOptions.Center);
         scanPanel.SetActive(false);
 
@@ -266,12 +371,11 @@ public class GuardianARSceneSetup : Editor
 
     static void BuildSetupPanelContent(Transform parent, ARFixedGuardianPlacer placer)
     {
-        CreateTMPLabel("Title", parent, "고정 수호신 설정", 24, TextAlignmentOptions.Center)
+        CreateTMPLabel("Title", parent, "Place Fixed Guardian", 24, TextAlignmentOptions.Center)
             .GetComponent<RectTransform>().anchoredPosition = new Vector2(0, 140f);
 
-        // 타입 버튼
-        var defBtn  = CreateButton("DefenseTypeBtn",    parent, "🛡 방어형");
-        var prodBtn = CreateButton("ProductionTypeBtn", parent, "⚙ 생산형");
+        var defBtn  = CreateButton("DefenseTypeBtn",    parent, "Defense");
+        var prodBtn = CreateButton("ProductionTypeBtn", parent, "Production");
         PlaceCenter(defBtn.GetComponent<RectTransform>(),  120f, 44f, -70f, 90f);
         PlaceCenter(prodBtn.GetComponent<RectTransform>(), 120f, 44f,  70f, 90f);
 
@@ -290,12 +394,11 @@ public class GuardianARSceneSetup : Editor
         PlaceCenter(defSlider.GetComponent<RectTransform>(), 260f, 24f, 30f, -10f);
         PlaceCenter(hpSlider.GetComponent<RectTransform>(),  260f, 24f, 30f, -50f);
 
-        var remainLabel = CreateTMPLabel("RemainingLabel", parent, "남은 분배량: 0", 16, TextAlignmentOptions.Center);
+        var remainLabel = CreateTMPLabel("RemainingLabel", parent, "Remaining: 0", 16, TextAlignmentOptions.Center);
         PlaceCenter(remainLabel.GetComponent<RectTransform>(), 280f, 30f, 0f, -90f);
 
-        // 확인/취소
-        var confirmBtn = CreateButton("ConfirmButton", parent, "배치 확정");
-        var cancelBtn  = CreateButton("CancelButton",  parent, "취소");
+        var confirmBtn = CreateButton("ConfirmButton", parent, "Confirm");
+        var cancelBtn  = CreateButton("CancelButton",  parent, "Cancel");
         PlaceCenter(confirmBtn.GetComponent<RectTransform>(), 130f, 44f, -75f, -135f);
         PlaceCenter(cancelBtn.GetComponent<RectTransform>(),  100f, 44f,  65f, -135f);
         confirmBtn.GetComponent<Image>().color = new Color(0f, 0.8f, 0.4f);
@@ -322,7 +425,7 @@ public class GuardianARSceneSetup : Editor
         var topBar = CreatePanel("TopBar", parent, new Color(0,0,0,0.6f));
         PlaceTop(topBar.GetComponent<RectTransform>(), 0f, 60f, 0f, true);
 
-        var nicknameLabel = CreateTMPLabel("NicknameText", topBar.transform, "닉네임", 18, TextAlignmentOptions.Left);
+        var nicknameLabel = CreateTMPLabel("NicknameText", topBar.transform, "Player", 18, TextAlignmentOptions.Left);
         PlaceLeft(nicknameLabel.GetComponent<RectTransform>(), 160f, 40f, 16f);
 
         var energyLabel = CreateTMPLabel("EnergyText", topBar.transform, "💎 100", 18, TextAlignmentOptions.Right);
@@ -345,12 +448,12 @@ public class GuardianARSceneSetup : Editor
         // 수호신 생성 패널
         var createPanel = CreatePanel("CreateGuardianPanel", parent, new Color(0,0,0,0.85f));
         StretchFill(createPanel.GetComponent<RectTransform>(), 60f, 120f, -60f, -120f);
-        CreateTMPLabel("CreateTitle", createPanel.transform, "수호신을 선택하세요", 22, TextAlignmentOptions.Center)
+        CreateTMPLabel("CreateTitle", createPanel.transform, "Choose Your Guardian", 22, TextAlignmentOptions.Center)
             .GetComponent<RectTransform>().anchoredPosition = new Vector2(0, 80f);
 
-        var animalBtn  = CreateButton("CreateAnimalBtn",   createPanel.transform, "🦁 동물형\nATK↑ SPD↑");
-        var robotBtn   = CreateButton("CreateRobotBtn",    createPanel.transform, "🤖 로봇형\nATK↑ DEF↑");
-        var aircraftBtn= CreateButton("CreateAircraftBtn", createPanel.transform, "✈ 비행체형\nRNG↑ TER↑");
+        var animalBtn  = CreateButton("CreateAnimalBtn",   createPanel.transform, "Animal\nATK / SPD");
+        var robotBtn   = CreateButton("CreateRobotBtn",    createPanel.transform, "Robot\nATK / DEF");
+        var aircraftBtn= CreateButton("CreateAircraftBtn", createPanel.transform, "Aircraft\nRNG / TER");
         PlaceCenter(animalBtn.GetComponent<RectTransform>(),   140f, 80f, -110f, 0f);
         PlaceCenter(robotBtn.GetComponent<RectTransform>(),    140f, 80f,    0f, 0f);
         PlaceCenter(aircraftBtn.GetComponent<RectTransform>(), 140f, 80f,  110f, 0f);
@@ -358,7 +461,7 @@ public class GuardianARSceneSetup : Editor
         // 영역 확장 패널
         var expandPanel = CreatePanel("ExpandPanel", parent, new Color(0,0,0,0.9f));
         StretchFill(expandPanel.GetComponent<RectTransform>(), 40f, 80f, -40f, -80f);
-        CreateTMPLabel("ExpandTitle", expandPanel.transform, "영역 확장", 22, TextAlignmentOptions.Center)
+        CreateTMPLabel("ExpandTitle", expandPanel.transform, "Expand Territory", 22, TextAlignmentOptions.Center)
             .GetComponent<RectTransform>().anchoredPosition = new Vector2(0, 100f);
         var radiusSlider = CreateSlider("RadiusSlider", expandPanel.transform);
         PlaceCenter(radiusSlider.GetComponent<RectTransform>(), 280f, 30f, 0f, 20f);
@@ -366,34 +469,63 @@ public class GuardianARSceneSetup : Editor
         sld.minValue = 50; sld.maxValue = 500; sld.value = 50;
         var radiusLabel   = CreateTMPLabel("RadiusLabel",   expandPanel.transform, "50m", 20, TextAlignmentOptions.Center);
         PlaceCenter(radiusLabel.GetComponent<RectTransform>(), 100f, 30f, 0f, 60f);
-        var confirmExpBtn = CreateButton("ConfirmExpandBtn", expandPanel.transform, "확장");
-        var cancelExpBtn  = CreateButton("CancelExpandBtn",  expandPanel.transform, "취소");
+        var confirmExpBtn = CreateButton("ConfirmExpandBtn", expandPanel.transform, "Expand");
+        var cancelExpBtn  = CreateButton("CancelExpandBtn",  expandPanel.transform, "Cancel");
         PlaceCenter(confirmExpBtn.GetComponent<RectTransform>(), 120f, 44f, -75f, -50f);
         PlaceCenter(cancelExpBtn.GetComponent<RectTransform>(),  100f, 44f,  65f, -50f);
         confirmExpBtn.GetComponent<Image>().color = new Color(0f, 0.8f, 0.4f);
         expandPanel.SetActive(false);
 
         // 영역 확장 열기 버튼 (하단)
-        var openExpandBtn = CreateButton("OpenExpandButton", parent, "➕ 영역 확장");
+        var openExpandBtn = CreateButton("OpenExpandButton", parent, "+ Expand Territory");
         PlaceBottom(openExpandBtn.GetComponent<RectTransform>(), 150f, 44f, -20f);
         openExpandBtn.GetComponent<Image>().color = new Color(0f, 0.6f, 1f);
 
-        SetPrivateField(hud, "energyText",        energyLabel);
-        SetPrivateField(hud, "guardianTypeText",  guardianTypeLabel);
-        SetPrivateField(hud, "guardianStatsText", guardianStatsLabel);
-        SetPrivateField(hud, "nicknameText",      nicknameLabel);
-        SetPrivateField(hud, "detectBadge",       detectBadge);
-        SetPrivateField(hud, "detectCount",       detectCount);
+        // 알림 토스트 (하단 중앙 슬라이드업)
+        var toastPanel = CreatePanel("NotificationToast", parent, new Color(0.1f, 0.1f, 0.1f, 0.9f));
+        PlaceBottom(toastPanel.GetComponent<RectTransform>(), 400f, 54f, 0f);
+        var toastRt = toastPanel.GetComponent<RectTransform>();
+        toastRt.anchoredPosition = new Vector2(0f, 80f);
+        var toastText = CreateTMPLabel("ToastText", toastPanel.transform, "", 18, TextAlignmentOptions.Center);
+        StretchFill(toastText.GetComponent<RectTransform>(), 12f, 0f, -12f, 0f);
+        toastPanel.SetActive(false);
+
+        // 동맹 요청 팝업 (화면 중앙)
+        var alliancePanel = CreatePanel("AllianceRequestPanel", parent, new Color(0.05f, 0.05f, 0.1f, 0.95f));
+        PlaceCenter(alliancePanel.GetComponent<RectTransform>(), 340f, 180f, 0f, 0f);
+        var allianceTitleLabel = CreateTMPLabel("AllianceRequesterText", alliancePanel.transform,
+            "Alliance Request", 22, TextAlignmentOptions.Center);
+        PlaceCenter(allianceTitleLabel.GetComponent<RectTransform>(), 300f, 40f, 0f, 50f);
+        var allianceAcceptBtn  = CreateButton("AllianceAcceptBtn",  alliancePanel.transform, "Accept");
+        var allianceDeclineBtn = CreateButton("AllianceDeclineBtn", alliancePanel.transform, "Decline");
+        PlaceCenter(allianceAcceptBtn.GetComponent<RectTransform>(),  120f, 44f, -75f, -40f);
+        PlaceCenter(allianceDeclineBtn.GetComponent<RectTransform>(), 120f, 44f,  75f, -40f);
+        allianceAcceptBtn.GetComponent<Image>().color  = new Color(0.2f, 0.7f, 0.3f);
+        allianceDeclineBtn.GetComponent<Image>().color = new Color(0.7f, 0.2f, 0.2f);
+        alliancePanel.SetActive(false);
+
+        SetPrivateField(hud, "energyText",          energyLabel);
+        SetPrivateField(hud, "guardianTypeText",    guardianTypeLabel);
+        SetPrivateField(hud, "guardianStatsText",   guardianStatsLabel);
+        SetPrivateField(hud, "nicknameText",        nicknameLabel);
+        SetPrivateField(hud, "detectBadge",         detectBadge);
+        SetPrivateField(hud, "detectCount",         detectCount);
         SetPrivateField(hud, "createGuardianPanel", createPanel);
-        SetPrivateField(hud, "createAnimalBtn",   animalBtn.GetComponent<Button>());
-        SetPrivateField(hud, "createRobotBtn",    robotBtn.GetComponent<Button>());
-        SetPrivateField(hud, "createAircraftBtn", aircraftBtn.GetComponent<Button>());
-        SetPrivateField(hud, "expandPanel",       expandPanel);
-        SetPrivateField(hud, "radiusSlider",      sld);
-        SetPrivateField(hud, "radiusLabel",       radiusLabel);
-        SetPrivateField(hud, "confirmExpandBtn",  confirmExpBtn.GetComponent<Button>());
-        SetPrivateField(hud, "cancelExpandBtn",   cancelExpBtn.GetComponent<Button>());
-        SetPrivateField(hud, "openExpandBtn",     openExpandBtn.GetComponent<Button>());
+        SetPrivateField(hud, "createAnimalBtn",     animalBtn.GetComponent<Button>());
+        SetPrivateField(hud, "createRobotBtn",      robotBtn.GetComponent<Button>());
+        SetPrivateField(hud, "createAircraftBtn",   aircraftBtn.GetComponent<Button>());
+        SetPrivateField(hud, "expandPanel",         expandPanel);
+        SetPrivateField(hud, "radiusSlider",        sld);
+        SetPrivateField(hud, "radiusLabel",         radiusLabel);
+        SetPrivateField(hud, "confirmExpandBtn",    confirmExpBtn.GetComponent<Button>());
+        SetPrivateField(hud, "cancelExpandBtn",     cancelExpBtn.GetComponent<Button>());
+        SetPrivateField(hud, "openExpandBtn",       openExpandBtn.GetComponent<Button>());
+        SetPrivateField(hud, "notificationToast",   toastPanel);
+        SetPrivateField(hud, "notificationText",    toastText);
+        SetPrivateField(hud, "allianceRequestPanel",  alliancePanel);
+        SetPrivateField(hud, "allianceRequesterText", allianceTitleLabel);
+        SetPrivateField(hud, "allianceAcceptBtn",   allianceAcceptBtn.GetComponent<Button>());
+        SetPrivateField(hud, "allianceDeclineBtn",  allianceDeclineBtn.GetComponent<Button>());
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -410,13 +542,13 @@ public class GuardianARSceneSetup : Editor
         // Encounter 패널
         var encPanel = CreatePanel("EncounterPanel", card.transform, Color.clear);
         StretchFill(encPanel.GetComponent<RectTransform>());
-        var encTitle = CreateTMPLabel("EncounterTitle", encPanel.transform, "조우!", 32, TextAlignmentOptions.Center);
+        var encTitle = CreateTMPLabel("EncounterTitle", encPanel.transform, "Encounter!", 32, TextAlignmentOptions.Center);
         var encDesc  = CreateTMPLabel("EncounterDesc",  encPanel.transform, "",      20, TextAlignmentOptions.Center);
         PlaceCenter(encTitle.GetComponent<RectTransform>(), 300f, 50f, 0f,  60f);
         PlaceCenter(encDesc.GetComponent<RectTransform>(),  300f, 40f, 0f,  10f);
 
-        var battleBtn   = CreateButton("BattleButton",   encPanel.transform, "⚔ 전투");
-        var allianceBtn = CreateButton("AllianceButton", encPanel.transform, "🤝 동맹");
+        var battleBtn   = CreateButton("BattleButton",   encPanel.transform, "Battle");
+        var allianceBtn = CreateButton("AllianceButton", encPanel.transform, "Alliance");
         var closeBtn    = CreateButton("CloseButton",    encPanel.transform, "✕");
         PlaceCenter(battleBtn.GetComponent<RectTransform>(),   120f, 44f, -75f, -60f);
         PlaceCenter(allianceBtn.GetComponent<RectTransform>(), 120f, 44f,  75f, -60f);
@@ -427,9 +559,9 @@ public class GuardianARSceneSetup : Editor
         // Animating 패널
         var animPanel = CreatePanel("AnimatingPanel", card.transform, Color.clear);
         StretchFill(animPanel.GetComponent<RectTransform>());
-        var vs1 = CreateTMPLabel("VS1Text", animPanel.transform, "나",   26, TextAlignmentOptions.Center);
-        var vs2 = CreateTMPLabel("VS2Text", animPanel.transform, "상대", 26, TextAlignmentOptions.Center);
-        var pw  = CreateTMPLabel("PowerText", animPanel.transform, "전투 중...", 20, TextAlignmentOptions.Center);
+        var vs1 = CreateTMPLabel("VS1Text", animPanel.transform, "You",   26, TextAlignmentOptions.Center);
+        var vs2 = CreateTMPLabel("VS2Text", animPanel.transform, "Enemy", 26, TextAlignmentOptions.Center);
+        var pw  = CreateTMPLabel("PowerText", animPanel.transform, "Fighting...", 20, TextAlignmentOptions.Center);
         CreateTMPLabel("VSText", animPanel.transform, "VS", 36, TextAlignmentOptions.Center);
         PlaceCenter(vs1.GetComponent<RectTransform>(), 120f, 40f, -100f, 20f);
         PlaceCenter(vs2.GetComponent<RectTransform>(), 120f, 40f,  100f, 20f);
@@ -439,9 +571,9 @@ public class GuardianARSceneSetup : Editor
         // Result 패널
         var resultPanel2 = CreatePanel("ResultPanel", card.transform, Color.clear);
         StretchFill(resultPanel2.GetComponent<RectTransform>());
-        var winnerLabel = CreateTMPLabel("WinnerText",  resultPanel2.transform, "결과!", 40, TextAlignmentOptions.Center);
+        var winnerLabel = CreateTMPLabel("WinnerText",  resultPanel2.transform, "Result!", 40, TextAlignmentOptions.Center);
         var absorbLabel = CreateTMPLabel("AbsorbText",  resultPanel2.transform, "",      18, TextAlignmentOptions.Center);
-        var resClose    = CreateButton("ResultCloseButton", resultPanel2.transform, "확인");
+        var resClose    = CreateButton("ResultCloseButton", resultPanel2.transform, "OK");
         PlaceCenter(winnerLabel.GetComponent<RectTransform>(), 280f, 60f, 0f,  60f);
         PlaceCenter(absorbLabel.GetComponent<RectTransform>(), 280f, 50f, 0f,   0f);
         PlaceCenter(resClose.GetComponent<RectTransform>(),    130f, 44f, 0f, -70f);

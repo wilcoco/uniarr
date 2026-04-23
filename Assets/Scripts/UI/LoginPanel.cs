@@ -50,7 +50,7 @@ namespace GuardianAR
             string nick = nicknameInput.text.Trim();
             if (string.IsNullOrEmpty(nick))
             {
-                errorText.text = "닉네임을 입력해주세요";
+                errorText.text = "Please enter a nickname";
                 return;
             }
             GameManager.Instance.SetVisitorId(nick);

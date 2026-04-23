@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -9,6 +10,18 @@ namespace GuardianAR
     /// </summary>
     public class HUD : MonoBehaviour
     {
+        public static HUD Instance { get; private set; }
+
+        [Header("알림 토스트")]
+        [SerializeField] private GameObject notificationToast;
+        [SerializeField] private TextMeshProUGUI notificationText;
+
+        [Header("동맹 요청 팝업")]
+        [SerializeField] private GameObject allianceRequestPanel;
+        [SerializeField] private TextMeshProUGUI allianceRequesterText;
+        [SerializeField] private Button allianceAcceptBtn;
+        [SerializeField] private Button allianceDeclineBtn;
+
         [Header("상태 표시")]
         [SerializeField] private TextMeshProUGUI energyText;
         [SerializeField] private TextMeshProUGUI guardianTypeText;
@@ -33,8 +46,17 @@ namespace GuardianAR
         [SerializeField] private Button cancelExpandBtn;
         [SerializeField] private Button openExpandBtn;
 
+        void Awake()
+        {
+            if (Instance != null) { Destroy(gameObject); return; }
+            Instance = this;
+        }
+
         void Start()
         {
+            if (notificationToast != null) notificationToast.SetActive(false);
+            if (allianceRequestPanel != null) allianceRequestPanel.SetActive(false);
+
             var gm = GameManager.Instance;
             gm.OnUserDataChanged += RefreshUserInfo;
             gm.OnNearbyChanged += RefreshDetectBadge;
@@ -75,7 +97,7 @@ namespace GuardianAR
                 nicknameText.text = gm.VisitorId ?? "";
 
             if (energyText != null)
-                energyText.text = $"💎 {gm.Energy}";
+                energyText.text = $"E:{gm.Energy}";
 
             bool hasGuardian = gm.MyGuardian != null;
             createGuardianPanel.SetActive(!hasGuardian);
@@ -86,9 +108,9 @@ namespace GuardianAR
                 var g = gm.MyGuardian;
                 guardianTypeText.text = g.type switch
                 {
-                    "animal" => "🦁 동물형",
-                    "robot" => "🤖 로봇형",
-                    "aircraft" => "✈ 비행체형",
+                    "animal"   => "Animal",
+                    "robot"    => "Robot",
+                    "aircraft" => "Aircraft",
                     _ => g.type
                 };
                 guardianStatsText.text =
@@ -120,6 +142,47 @@ namespace GuardianAR
             {
                 expandPanel.SetActive(false);
                 if (!success) Debug.LogWarning("영역 확장 실패");
+            });
+        }
+
+        // ─── 푸시 알림 UI ─────────────────────────────────────────────
+
+        public void ShowNotification(string message)
+        {
+            if (notificationToast == null) return;
+            StopCoroutine(nameof(HideToastAfterDelay));
+            notificationText.text = message;
+            notificationToast.SetActive(true);
+            StartCoroutine(nameof(HideToastAfterDelay));
+        }
+
+        private IEnumerator HideToastAfterDelay()
+        {
+            yield return new WaitForSeconds(3f);
+            if (notificationToast != null)
+                notificationToast.SetActive(false);
+        }
+
+        public void ShowAllianceRequest(string requestId, string requesterId)
+        {
+            if (allianceRequestPanel == null) return;
+            allianceRequesterText.text = $"Alliance Request: {requesterId}";
+            allianceRequestPanel.SetActive(true);
+
+            allianceAcceptBtn.onClick.RemoveAllListeners();
+            allianceDeclineBtn.onClick.RemoveAllListeners();
+
+            allianceAcceptBtn.onClick.AddListener(() =>
+            {
+                allianceRequestPanel.SetActive(false);
+                ApiManager.Instance.RespondAlliance(requestId, true, _ =>
+                    ShowNotification("Alliance accepted!"));
+            });
+            allianceDeclineBtn.onClick.AddListener(() =>
+            {
+                allianceRequestPanel.SetActive(false);
+                ApiManager.Instance.RespondAlliance(requestId, false, _ =>
+                    ShowNotification("Alliance request declined."));
             });
         }
     }

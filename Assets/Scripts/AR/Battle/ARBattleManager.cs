@@ -162,7 +162,7 @@ namespace GuardianAR
 
             if (result == null)
             {
-                yield return StartCoroutine(ShowBattleStatus("서버 오류"));
+                yield return StartCoroutine(ShowBattleStatus("Server Error"));
                 CleanupBattle();
                 yield break;
             }
@@ -195,7 +195,7 @@ namespace GuardianAR
                 // 궁극기 연출
                 if (frame.attackerUsedUlt && frame.isAttackerTurn)
                 {
-                    yield return StartCoroutine(ShowBattleStatus("⚡ 궁극기 발동!"));
+                    yield return StartCoroutine(ShowBattleStatus("⚡ Ultimate!"));
                     yield return StartCoroutine(
                         attackEffect.PlayUltimate(attTr, myGuardian?.type ?? "animal"));
                 }
@@ -293,12 +293,12 @@ namespace GuardianAR
             resultPanel.SetActive(true);
 
             bool iWon = result.winner == "attacker";
-            resultTitle.text = iWon ? "🎉 승리!" : "💀 패배...";
+            resultTitle.text = iWon ? "🎉 Victory!" : "💀 Defeat...";
             resultTitle.color = iWon ? Color.green : Color.red;
 
-            string detail = $"내 전투력: {result.attackerPower}  vs  상대: {result.defenderPower}\n";
+            string detail = $"My Power: {result.attackerPower}  vs  Enemy: {result.defenderPower}\n";
             if (iWon && result.absorbed != null)
-                detail += $"흡수 → ATK+{result.absorbed.atk}  DEF+{result.absorbed.def}  HP+{result.absorbed.hp}";
+                detail += $"Absorbed → ATK+{result.absorbed.atk}  DEF+{result.absorbed.def}  HP+{result.absorbed.hp}";
             resultDetail.text = detail;
 
             CleanupBattle();
@@ -312,7 +312,7 @@ namespace GuardianAR
                 battleStatusText.text = i.ToString();
                 yield return new WaitForSeconds(0.8f);
             }
-            battleStatusText.text = "전투!";
+            battleStatusText.text = "Fight!";
             yield return new WaitForSeconds(0.5f);
             battleStatusText.text = "";
         }
@@ -365,10 +365,10 @@ namespace GuardianAR
                     break;
                 case BattleStatus.FixedGuardianAttack:
                     var fg = battle.targetFixedGuardian;
-                    defenderHPBar.Init($"{fg.owner}의 고정 수호신", fg.Hp, 0);
+                    defenderHPBar.Init($"{fg.owner}'s Fixed Guardian", fg.Hp, 0);
                     break;
                 case BattleStatus.IntrusionDetected:
-                    defenderHPBar.Init("방어자", 100, 0);
+                    defenderHPBar.Init("Defender", 100, 0);
                     break;
             }
         }

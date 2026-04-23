@@ -146,7 +146,7 @@ namespace GuardianAR
             {
                 var item = Instantiate(territoryItemPrefab, territoryListContainer);
                 var label = item.GetComponentInChildren<TextMeshProUGUI>();
-                if (label != null) label.text = $"영역 ({t.radius}m)";
+                if (label != null) label.text = $"Zone ({t.radius}m)";
 
                 var btn = item.GetComponentInChildren<Button>();
                 var capturedId = t.id;
@@ -235,7 +235,7 @@ namespace GuardianAR
 
             int total = usedAtk + usedDef + usedHp;
             int maxTotal = maxAtk + maxDef + maxHp;
-            remainingStatsLabel.text = $"남은 분배량: {maxTotal - total}";
+            remainingStatsLabel.text = $"Remaining: {maxTotal - total}";
 
             confirmBtn.interactable = total > 0;
         }
