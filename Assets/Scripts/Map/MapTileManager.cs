@@ -60,6 +60,12 @@ namespace GuardianAR
 
         private void CreateTileGrid()
         {
+            if (tilePrefab == null || tileContainer == null)
+            {
+                Debug.LogError("[MapTileManager] tilePrefab 또는 tileContainer가 연결되지 않았습니다");
+                return;
+            }
+
             tileImages = new RawImage[tileGridSize, tileGridSize];
             int half = tileGridSize / 2;
 
@@ -68,6 +74,8 @@ namespace GuardianAR
                 for (int x = 0; x < tileGridSize; x++)
                 {
                     var img = Instantiate(tilePrefab, tileContainer);
+                    img.gameObject.SetActive(true);              // 프리펩이 비활성이라 클론도 비활성 → 강제 활성화
+                    img.color = new Color(0.15f, 0.15f, 0.18f);  // 로딩 전 회색 배경 (검은 화면 방지)
                     img.rectTransform.sizeDelta = new Vector2(tilePixelSize, tilePixelSize);
                     img.rectTransform.anchoredPosition = new Vector2(
                         (x - half) * tilePixelSize,
@@ -76,6 +84,7 @@ namespace GuardianAR
                     tileImages[x, y] = img;
                 }
             }
+            Debug.Log($"[MapTileManager] 타일 그리드 생성 완료 ({tileGridSize}×{tileGridSize})");
         }
 
         public void CenterOn(LatLng location)
@@ -112,23 +121,42 @@ namespace GuardianAR
             if (tileCache.TryGetValue(key, out var cached))
             {
                 target.texture = cached;
+                target.color = Color.white;
                 yield break;
             }
 
-            // s: a, b, c 중 하나 (로드 분산)
-            string s = new[] { "a", "b", "c" }[(x + y) % 3];
-            string url = $"https://{s}.tile.openstreetmap.org/{zoom}/{x}/{y}.png";
+            // 타일 좌표가 유효 범위를 벗어나면 스킵 (월드 끝)
+            int max = (1 << zoom) - 1;
+            if (x < 0 || y < 0 || x > max || y > max)
+            {
+                target.color = new Color(0.1f, 0.1f, 0.12f);
+                yield break;
+            }
+
+            // OSM은 앱 사용 금지 → CartoDB Voyager 무료 타일 사용 (앱 허용, attribution 필요)
+            string s = new[] { "a", "b", "c", "d" }[(x + y) % 4];
+            string url = $"https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{zoom}/{x}/{y}.png";
 
             using var req = UnityWebRequestTexture.GetTexture(url);
-            req.SetRequestHeader("User-Agent", "GuardianAR/1.0");
+            req.SetRequestHeader("User-Agent", "GuardianAR/1.0 (mobile-game)");
+            req.timeout = 10;
             yield return req.SendWebRequest();
 
             if (req.result == UnityWebRequest.Result.Success)
             {
                 var tex = DownloadHandlerTexture.GetContent(req);
                 tileCache[key] = tex;
-                target.texture = tex;
+                if (target != null)
+                {
+                    target.texture = tex;
+                    target.color = Color.white;
+                }
                 OnTilesLoaded?.Invoke();
+            }
+            else
+            {
+                Debug.LogWarning($"[MapTileManager] 타일 로드 실패 {key}: {req.error} ({req.responseCode}) URL={url}");
+                if (target != null) target.color = new Color(0.2f, 0.05f, 0.05f); // 빨간 회색 = 실패 표시
             }
         }
 

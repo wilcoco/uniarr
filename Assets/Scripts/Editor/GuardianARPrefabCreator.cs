@@ -34,7 +34,7 @@ public class GuardianARPrefabCreator : Editor
         // AR 프리팹
         CreateARHPBarPrefab();
         CreateARDamageNumberPrefab();
-        CreateGuardianARPrefab("GuardianARObject",      PrimitiveType.Capsule, false);
+        CreateGuardianARPrefab("GuardianARObject",      PrimitiveType.Cube,    false);
         CreateGuardianARPrefab("FixedGuardianARObject", PrimitiveType.Cube,    true);
         CreateTerritoryARPrefab();
 
@@ -43,9 +43,9 @@ public class GuardianARPrefabCreator : Editor
 
         ConnectToScene();
 
-        EditorUtility.DisplayDialog("완료",
-            "모든 프리팹 생성 완료!\nAssets/Prefabs/ 폴더에서 확인하세요.",
-            "확인");
+        EditorUtility.DisplayDialog("Done",
+            "All prefabs created!\nCheck Assets/Prefabs/ folder.",
+            "OK");
     }
 
     // ─── 폴더 생성 ────────────────────────────────────────────────────
@@ -119,7 +119,7 @@ public class GuardianARPrefabCreator : Editor
         root.AddComponent<Button>();
 
         MakeImage("Icon",  root.transform, circle, new Color(1f, 0.75f, 0f), 48, 48, 0, 13f);
-        var icon = MakeTMPUGUI("TypeLabel",  root.transform, "🛡",   24f, new Vector2(40, 40), new Vector2(0, 13f));
+        var icon = MakeTMPUGUI("TypeLabel",  root.transform, "DEF",  18f, new Vector2(40, 40), new Vector2(0, 13f));
         icon.alignment = TextAlignmentOptions.Center;
         MakeTMPUGUI("OwnerLabel", root.transform, "", 11f, new Vector2(84, 20), new Vector2(0, -24f))
             .color = new Color(1f, 0.9f, 0.7f);
@@ -266,6 +266,7 @@ public class GuardianARPrefabCreator : Editor
         }
         else
         {
+            root.AddComponent<ARWorldAnchor>();
             var obj = root.AddComponent<GuardianARObject>();
             SetField(obj, "bodyRenderer", renderer);
             SetField(obj, "nameLabel",    nameLabelGO);

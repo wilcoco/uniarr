@@ -12,33 +12,33 @@ namespace GuardianAR
     {
         public static HUD Instance { get; private set; }
 
-        [Header("알림 토스트")]
+        [Header("Toast Notification")]
         [SerializeField] private GameObject notificationToast;
         [SerializeField] private TextMeshProUGUI notificationText;
 
-        [Header("동맹 요청 팝업")]
+        [Header("Alliance Request Popup")]
         [SerializeField] private GameObject allianceRequestPanel;
         [SerializeField] private TextMeshProUGUI allianceRequesterText;
         [SerializeField] private Button allianceAcceptBtn;
         [SerializeField] private Button allianceDeclineBtn;
 
-        [Header("상태 표시")]
+        [Header("Status Display")]
         [SerializeField] private TextMeshProUGUI energyText;
         [SerializeField] private TextMeshProUGUI guardianTypeText;
         [SerializeField] private TextMeshProUGUI guardianStatsText;
         [SerializeField] private TextMeshProUGUI nicknameText;
 
-        [Header("주변 탐지")]
+        [Header("Nearby Detection")]
         [SerializeField] private GameObject detectBadge;       // 주변 타겟 있을 때 표시
         [SerializeField] private TextMeshProUGUI detectCount;
 
-        [Header("수호신 생성 패널")]
+        [Header("Create Guardian Panel")]
         [SerializeField] private GameObject createGuardianPanel;
         [SerializeField] private Button createAnimalBtn;
         [SerializeField] private Button createRobotBtn;
         [SerializeField] private Button createAircraftBtn;
 
-        [Header("영역 확장 패널")]
+        [Header("Expand Territory Panel")]
         [SerializeField] private GameObject expandPanel;
         [SerializeField] private Slider radiusSlider;
         [SerializeField] private TextMeshProUGUI radiusLabel;
@@ -46,9 +46,13 @@ namespace GuardianAR
         [SerializeField] private Button cancelExpandBtn;
         [SerializeField] private Button openExpandBtn;
 
+        [Header("v2 New Panel Buttons")]
+        [SerializeField] private Button openPartsBtn;
+        [SerializeField] private Button openLeaderboardBtn;
+
         void Awake()
         {
-            if (Instance != null) { Destroy(gameObject); return; }
+            // 중복 Canvas 자살 방지 — 새 Instance가 그대로 유지
             Instance = this;
         }
 
@@ -69,6 +73,9 @@ namespace GuardianAR
             cancelExpandBtn.onClick.AddListener(() => expandPanel.SetActive(false));
             confirmExpandBtn.onClick.AddListener(ConfirmExpand);
 
+            if (openPartsBtn != null)       openPartsBtn.onClick.AddListener      (() => PartsPanel.Instance?.Show());
+            if (openLeaderboardBtn != null) openLeaderboardBtn.onClick.AddListener(() => LeaderboardPanel.Instance?.Show());
+
             radiusSlider.onValueChanged.AddListener(v =>
                 radiusLabel.text = $"{(int)v}m");
 
@@ -78,6 +85,48 @@ namespace GuardianAR
             radiusSlider.value = 50;
 
             RefreshUserInfo();
+
+            // 사용자 데이터 로드 후 오프라인 요약 1회 호출 + 주기 ping
+            gm.OnUserDataChanged += FetchOfflineSummaryOnce;
+            InvokeRepeating(nameof(SendActivityPing), 60f, 60f);
+        }
+
+        private bool _summaryFetched = false;
+        void FetchOfflineSummaryOnce()
+        {
+            if (_summaryFetched) return;
+            var userId = GameManager.Instance?.UserId;
+            if (string.IsNullOrEmpty(userId)) return;
+            _summaryFetched = true;
+
+            ApiManager.Instance.GetActivitySummary(userId, json =>
+            {
+                if (string.IsNullOrEmpty(json) || json.Length == 0 || json[0] != '{')
+                {
+                    Debug.LogWarning($"[HUD] activity summary 비정상 응답: {(string.IsNullOrEmpty(json) ? "(empty)" : json.Substring(0, System.Math.Min(200, json.Length)))}");
+                    return;
+                }
+                ActivitySummaryResponse resp = null;
+                try { resp = JsonUtility.FromJson<ActivitySummaryResponse>(json); }
+                catch (System.Exception e) { Debug.LogError($"[HUD] activity parse 실패: {e.Message}"); return; }
+                if (resp == null || !resp.success || !resp.hasContent || resp.summary == null) return;
+
+                var s = resp.summary;
+                var parts = new System.Collections.Generic.List<string>();
+                if (s.partsCount > 0)     parts.Add($"{s.partsCount} parts received");
+                if (s.attackedCount > 0)  parts.Add($"Attacked {s.attackedCount}x (W {s.attackedWon}/L {s.attackedLost})");
+                if (s.defeated)           parts.Add("Guardian defeated - territories vulnerable");
+                if (s.vulnerableCount > 0) parts.Add($"{s.vulnerableCount} vulnerable territories");
+                if (s.currentRank > 0)    parts.Add($"Rank #{s.currentRank}");
+                if (parts.Count > 0) ShowNotification("Welcome back!\n" + string.Join(" - ", parts));
+            },
+            err => Debug.LogWarning($"[HUD] activity HTTP error: {err}"));
+        }
+
+        void SendActivityPing()
+        {
+            var userId = GameManager.Instance?.UserId;
+            if (!string.IsNullOrEmpty(userId)) ApiManager.Instance.ActivityPing(userId);
         }
 
         void OnDestroy()

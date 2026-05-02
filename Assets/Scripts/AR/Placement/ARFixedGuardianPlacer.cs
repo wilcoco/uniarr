@@ -23,6 +23,55 @@ namespace GuardianAR
         [SerializeField] private GameObject previewPrefab;      // 반투명 배치 인디케이터
         [SerializeField] private GameObject placementIndicator; // 화살표/원형 가이드
 
+        [Header("Piloto Studio Tower Prefabs — 13종 × 5레벨")]
+        [Tooltip("자동 매핑 ON 이면 Resources.Load로 SM_TowerDefense_{class}_Lv{level} 자동 사용")]
+        [SerializeField] private bool autoLoadFromPiloto = true;
+
+        // 수동 모드 — Lv1 프리팹만 슬롯에 넣음 (Lv2~5는 자동으로 같은 폴더에서 찾음)
+        [SerializeField] private GameObject genericTowerLv1, balistaTowerLv1, cannonTowerLv1, assaultTowerLv1,
+                                             scifiTowerLv1, fireTowerLv1, iceTowerLv1, aquaTowerLv1,
+                                             electricTowerLv1, natureTowerLv1, venomTowerLv1, arcaneTowerLv1, crystalTowerLv1;
+
+        public GameObject GetTowerPrefab(string towerClass, int level = 1)
+        {
+            level = Mathf.Clamp(level, 1, 5);
+            string pilotoName = towerClass switch
+            {
+                "balista"  => "Balista", "cannon"   => "Cannon",   "assault"  => "Assault",
+                "scifi"    => "SciFi",   "fire"     => "Fire",     "ice"      => "Ice",
+                "aqua"     => "Aqua",    "electric" => "Electric", "nature"   => "Nature",
+                "venom"    => "Venom",   "arcane"   => "Arcane",   "crystal"  => "Crystal",
+                _          => "Generic"
+            };
+
+            // 1순위: 에디터 AssetDatabase (개발/플레이 모드)
+#if UNITY_EDITOR
+            if (autoLoadFromPiloto)
+            {
+                var path = $"Assets/Piloto Studio/TowerDefenseStarterPack/Prefabs/Towers/SM_TowerDefense_{pilotoName}_Lv{level}.prefab";
+                var p = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                if (p != null) return p;
+            }
+#endif
+            // 2순위: Resources/Towers 폴더 (안드로이드 빌드 — Lv 별 가능)
+            var res = Resources.Load<GameObject>($"Towers/SM_TowerDefense_{pilotoName}_Lv{level}");
+            if (res != null) return res;
+            // 2-1: Lv1 폴백
+            res = Resources.Load<GameObject>($"Towers/SM_TowerDefense_{pilotoName}_Lv1");
+            if (res != null) return res;
+
+            // 3순위: Inspector 수동 슬롯 (Lv1만)
+            GameObject manual = towerClass switch
+            {
+                "balista"  => balistaTowerLv1, "cannon"   => cannonTowerLv1,   "assault"  => assaultTowerLv1,
+                "scifi"    => scifiTowerLv1,   "fire"     => fireTowerLv1,     "ice"      => iceTowerLv1,
+                "aqua"     => aquaTowerLv1,    "electric" => electricTowerLv1, "nature"   => natureTowerLv1,
+                "venom"    => venomTowerLv1,   "arcane"   => arcaneTowerLv1,   "crystal"  => crystalTowerLv1,
+                _          => genericTowerLv1
+            };
+            return manual ?? previewPrefab;
+        }
+
         [Header("Setup Panel UI")]
         [SerializeField] private GameObject setupPanel;
         [SerializeField] private Button defenseTypeBtn;

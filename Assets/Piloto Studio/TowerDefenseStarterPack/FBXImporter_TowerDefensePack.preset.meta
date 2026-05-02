@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 4cb72698599c9cb4da9fad0a4e77bfe5
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2655988077585873504
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 320370
+  packageName: Tower Defense Kit Megapack
+  packageVersion: 2.0
+  assetPath: Assets/Piloto Studio/TowerDefenseStarterPack/FBXImporter_TowerDefensePack.preset
+  uploadId: 815114

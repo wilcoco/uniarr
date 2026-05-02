@@ -40,6 +40,15 @@ namespace GuardianAR
 
         private IEnumerator TrackingCoroutine()
         {
+#if UNITY_EDITOR
+            // 에디터: 실제 GPS 권한 요청 절대 금지, 강남역 기본 좌표 자동 주입
+            // F1로 EditorGPSDebug 패널 열어서 위치 변경 가능 (WASD/화살표로 이동)
+            yield return new WaitForSeconds(0.3f);
+            InjectLocation(new LatLng(37.4981, 127.0276));
+            IsTracking = true;
+            Debug.Log("[LocationManager] Editor: 강남역 기본 좌표 주입 (F1=패널, WASD/화살표=이동, Shift=4배속)");
+            yield break;
+#else
             // 권한 확인
             if (!Input.location.isEnabledByUser)
             {
@@ -78,6 +87,7 @@ namespace GuardianAR
 
                 yield return new WaitForSeconds(updateIntervalSeconds);
             }
+#endif
         }
 
         // WebView에서 받은 GPS를 Unity LocationService 없이 주입 (에디터/WebView 전용)

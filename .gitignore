@@ -47,3 +47,13 @@ desktop.ini
 
 # Addressables
 [Aa]ddressable[Aa]ssets[Ss]ettings/
+
+# Firebase 대용량 바이너리 (GitHub 100MB 제한 회피)
+# Firebase는 Unity Package Manager로 설치 → Library/PackageCache에 자동 저장
+# Assets/Firebase는 Unity가 자동 임포트하는 폴더라 빌드 시 다시 생성됨
+Assets/Firebase/Plugins/x86_64/*.so
+Assets/Firebase/Plugins/x86_64/*.bundle
+Assets/Firebase/Plugins/x86_64/*.dll
+Assets/Firebase/Plugins/x86_64/*.so.meta
+Assets/Firebase/Plugins/x86_64/*.bundle.meta
+Assets/Firebase/Plugins/x86_64/*.dll.meta

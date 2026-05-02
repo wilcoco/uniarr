@@ -21,6 +21,7 @@ namespace GuardianAR
 
         // ─── 영역 ──────────────────────────────────────────────────────
         public List<Territory> MyTerritories { get; private set; } = new();
+        public List<FixedGuardian> MyFixedGuardians { get; private set; } = new();
         public List<Territory> NearbyTerritories { get; private set; } = new();
 
         // ─── 주변 ──────────────────────────────────────────────────────
@@ -50,6 +51,7 @@ namespace GuardianAR
         void Start()
         {
             LocationManager.Instance.OnLocationUpdated += HandleLocationUpdate;
+            LocationManager.Instance.StartTracking();
 
             if (!string.IsNullOrEmpty(VisitorId))
                 LoadUserData();
@@ -64,6 +66,22 @@ namespace GuardianAR
             LoadUserData();
         }
 
+        // 안전한 JsonUtility 파싱 헬퍼
+        static T SafeParse<T>(string json, string tag) where T : class
+        {
+            if (string.IsNullOrEmpty(json) || json[0] != '{')
+            {
+                Debug.LogWarning($"[{tag}] 비정상 응답: {(string.IsNullOrEmpty(json) ? "(empty)" : json.Substring(0, System.Math.Min(200, json.Length)))}");
+                return null;
+            }
+            try { return JsonUtility.FromJson<T>(json); }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[{tag}] JSON parse 실패: {e.Message}\n응답: {json.Substring(0, System.Math.Min(200, json.Length))}");
+                return null;
+            }
+        }
+
         // ─── 데이터 로드 ───────────────────────────────────────────────
         public void LoadUserData()
         {
@@ -71,8 +89,8 @@ namespace GuardianAR
 
             ApiManager.Instance.GetGuardian(VisitorId, json =>
             {
-                var resp = JsonUtility.FromJson<GuardianResponse>(json);
-                if (resp.guardian != null)
+                var resp = SafeParse<GuardianResponse>(json, "GameManager.LoadUserData");
+                if (resp?.guardian != null)
                 {
                     MyGuardian = resp.guardian;
                     UserId = resp.userId;
@@ -82,18 +100,24 @@ namespace GuardianAR
                     if (!string.IsNullOrEmpty(UserId))
                         LoadMyTerritories();
                 }
-            });
+                else
+                {
+                    // 신규 사용자 — guardian이 null이지만 OnUserDataChanged는 호출 (HUD가 생성 패널 띄움)
+                    OnUserDataChanged?.Invoke();
+                }
+            }, err => Debug.LogError($"[GameManager] GetGuardian HTTP error: {err}"));
         }
 
         private void LoadMyTerritories()
         {
             ApiManager.Instance.GetMyTerritories(UserId, json =>
             {
-                var resp = JsonUtility.FromJson<TerritoriesResponse>(json);
-                MyTerritories = resp.territories ?? new List<Territory>();
+                var resp = SafeParse<TerritoriesResponse>(json, "GameManager.LoadMyTerritories");
+                MyTerritories = resp?.territories ?? new List<Territory>();
+                MyFixedGuardians = resp?.fixedGuardians ?? new List<FixedGuardian>();
                 foreach (var t in MyTerritories) t.isOwn = true;
                 OnTerritoriesChanged?.Invoke();
-            });
+            }, err => Debug.LogError($"[GameManager] GetMyTerritories HTTP error: {err}"));
         }
 
         // ─── 위치 업데이트 ─────────────────────────────────────────────
@@ -110,43 +134,47 @@ namespace GuardianAR
         {
             ApiManager.Instance.GetNearbyTerritories(loc.lat, loc.lng, 1000f, UserId, json =>
             {
-                var resp = JsonUtility.FromJson<TerritoriesResponse>(json);
-                NearbyTerritories = resp.territories ?? new List<Territory>();
+                var resp = SafeParse<TerritoriesResponse>(json, "GameManager.NearbyTerritories");
+                NearbyTerritories = resp?.territories ?? new List<Territory>();
                 OnTerritoriesChanged?.Invoke();
             });
 
             ApiManager.Instance.GetNearbyPlayers(loc.lat, loc.lng, 1000f, UserId, json =>
             {
-                var resp = JsonUtility.FromJson<PlayersResponse>(json);
-                NearbyPlayers = resp.players ?? new List<NearbyPlayer>();
+                var resp = SafeParse<PlayersResponse>(json, "GameManager.NearbyPlayers");
+                NearbyPlayers = resp?.players ?? new List<NearbyPlayer>();
                 OnNearbyChanged?.Invoke();
             });
 
             ApiManager.Instance.GetNearbyFixedGuardians(loc.lat, loc.lng, 1000f, UserId, json =>
             {
-                var resp = JsonUtility.FromJson<FixedGuardiansResponse>(json);
-                NearbyFixedGuardians = resp.fixedGuardians ?? new List<FixedGuardian>();
+                var resp = SafeParse<FixedGuardiansResponse>(json, "GameManager.NearbyFixed");
+                NearbyFixedGuardians = resp?.fixedGuardians ?? new List<FixedGuardian>();
                 OnNearbyChanged?.Invoke();
             });
         }
 
+        // ─── AR 모드 여부 ──────────────────────────────────────────────
+        public bool IsArMode => ModeController.Instance != null &&
+                                ModeController.Instance.CurrentMode == ModeController.GameMode.AR;
+
         // ─── 즉시 공격 (플레이어가 직접 선택) ────────────────────────
-        public void AttackPlayer(NearbyPlayer target, Action<BattleResult> callback)
+        public void AttackPlayer(NearbyPlayer target, bool arMode = false, bool ultActivated = false, Action<BattleResult> callback = null)
         {
-            ApiManager.Instance.Attack(UserId, target.id, null, json =>
+            ApiManager.Instance.Attack(UserId, target.id, null, arMode, ultActivated, json =>
             {
-                var result = JsonUtility.FromJson<BattleResult>(json);
+                var result = SafeParse<BattleResult>(json, "GameManager.AttackPlayer");
                 ActiveBattle = new CurrentBattle { status = BattleStatus.PlayerEncounter, targetPlayer = target, result = result };
                 callback?.Invoke(result);
                 LoadUserData();
             });
         }
 
-        public void AttackTerritory(Territory territory, Action<BattleResult> callback)
+        public void AttackTerritory(Territory territory, bool arMode = false, bool ultActivated = false, Action<BattleResult> callback = null)
         {
-            ApiManager.Instance.Attack(UserId, territory.userId, territory.id, json =>
+            ApiManager.Instance.Attack(UserId, territory.userId, territory.id, arMode, ultActivated, json =>
             {
-                var result = JsonUtility.FromJson<BattleResult>(json);
+                var result = SafeParse<BattleResult>(json, "GameManager.AttackTerritory");
                 ActiveBattle = new CurrentBattle { status = BattleStatus.IntrusionDetected, territory = territory, result = result };
                 callback?.Invoke(result);
                 LoadUserData();
@@ -157,8 +185,8 @@ namespace GuardianAR
         {
             ApiManager.Instance.RequestAlliance(UserId, target.id, json =>
             {
-                var resp = JsonUtility.FromJson<AllianceRequestResponse>(json);
-                callback?.Invoke(resp.success);
+                var resp = SafeParse<AllianceRequestResponse>(json, "GameManager.RequestAlliance");
+                callback?.Invoke(resp != null && resp.success);
             });
         }
 
@@ -167,8 +195,8 @@ namespace GuardianAR
         {
             ApiManager.Instance.CreateGuardian(VisitorId, type, json =>
             {
-                var resp = JsonUtility.FromJson<CreateGuardianResponse>(json);
-                if (resp.success)
+                var resp = SafeParse<CreateGuardianResponse>(json, "GameManager.CreateGuardian");
+                if (resp != null && resp.success)
                 {
                     MyGuardian = resp.guardian;
                     UserId = resp.userId;
@@ -207,7 +235,11 @@ namespace GuardianAR
             });
         }
 
+        // 하위 호환 — AR 파라미터 없이 호출하는 기존 코드용 (BattleModal 등)
         public void RespondToBattle(string choice, Action<BattleResult> callback)
+            => RespondToBattle(choice, false, false, callback);
+
+        public void RespondToBattle(string choice, bool arMode, bool ultActivated, Action<BattleResult> callback)
         {
             var battle = ActiveBattle;
             if (battle == null) return;
@@ -216,14 +248,14 @@ namespace GuardianAR
             {
                 ApiManager.Instance.RequestPlayerBattle(UserId, battle.targetPlayer.id, choice, reqJson =>
                 {
-                    var req = JsonUtility.FromJson<BattleRequestResponse>(reqJson);
-                    if (!req.success) { callback?.Invoke(null); return; }
+                    var req = SafeParse<BattleRequestResponse>(reqJson, "GameManager.RequestPlayerBattle");
+                    if (req == null || !req.success) { callback?.Invoke(null); return; }
 
                     if (choice == "alliance") { EndBattle(); callback?.Invoke(null); return; }
 
-                    ApiManager.Instance.ExecutePlayerBattle(req.battleId, execJson =>
+                    ApiManager.Instance.ExecutePlayerBattle(req.battleId, arMode, ultActivated, execJson =>
                     {
-                        var result = JsonUtility.FromJson<BattleResult>(execJson);
+                        var result = SafeParse<BattleResult>(execJson, "GameManager.ExecutePlayerBattle");
                         ActiveBattle.result = result;
                         callback?.Invoke(result);
                         LoadUserData();
@@ -232,9 +264,9 @@ namespace GuardianAR
             }
             else if (battle.status == BattleStatus.FixedGuardianAttack)
             {
-                ApiManager.Instance.AttackFixedGuardian(UserId, battle.targetFixedGuardian.id, execJson =>
+                ApiManager.Instance.AttackFixedGuardian(UserId, battle.targetFixedGuardian.id, arMode, ultActivated, execJson =>
                 {
-                    var result = JsonUtility.FromJson<BattleResult>(execJson);
+                    var result = SafeParse<BattleResult>(execJson, "GameManager.AttackFixedGuardian");
                     ActiveBattle.result = result;
                     callback?.Invoke(result);
                     LoadUserData();
@@ -246,12 +278,12 @@ namespace GuardianAR
             {
                 ApiManager.Instance.RequestBattle(UserId, battle.territory.userId, battle.territory.id, reqJson =>
                 {
-                    var req = JsonUtility.FromJson<BattleRequestResponse>(reqJson);
-                    if (!req.success) { callback?.Invoke(null); return; }
+                    var req = SafeParse<BattleRequestResponse>(reqJson, "GameManager.RequestBattle");
+                    if (req == null || !req.success) { callback?.Invoke(null); return; }
 
-                    ApiManager.Instance.ExecuteBattle(req.battleId, execJson =>
+                    ApiManager.Instance.ExecuteBattle(req.battleId, arMode, ultActivated, execJson =>
                     {
-                        var result = JsonUtility.FromJson<BattleResult>(execJson);
+                        var result = SafeParse<BattleResult>(execJson, "GameManager.ExecuteBattle");
                         ActiveBattle.result = result;
                         callback?.Invoke(result);
                         LoadUserData();
@@ -274,8 +306,8 @@ namespace GuardianAR
 
             ApiManager.Instance.ExpandTerritory(UserId, loc.lat, loc.lng, radius, json =>
             {
-                var resp = JsonUtility.FromJson<ExpandTerritoryResponse>(json);
-                if (resp.success)
+                var resp = SafeParse<ExpandTerritoryResponse>(json, "GameManager.ExpandTerritory");
+                if (resp != null && resp.success && resp.territory != null)
                 {
                     resp.territory.isOwn = true;
                     MyTerritories.Add(resp.territory);
@@ -310,6 +342,7 @@ namespace GuardianAR
         [Serializable] private class TerritoriesResponse
         {
             public List<Territory> territories;
+            public List<FixedGuardian> fixedGuardians; // /my/:userId 응답에 포함
         }
         [Serializable] private class PlayersResponse
         {

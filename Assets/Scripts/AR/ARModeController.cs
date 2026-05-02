@@ -40,12 +40,12 @@ namespace GuardianAR
         private GameObject myGuardianObj;
         private readonly Dictionary<string, GameObject> arPlayers = new();
         private readonly Dictionary<string, GameObject> arFixedGuardians = new();
+        private readonly Dictionary<string, GameObject> arMyTowers = new();  // 내 타워 (3D)
         private readonly Dictionary<string, GameObject> arMyFixedGuardians = new();
         private readonly Dictionary<string, GameObject> arTerritories = new();
 
         void Awake()
         {
-            if (Instance != null) { Destroy(gameObject); return; }
             Instance = this;
         }
 
@@ -83,9 +83,16 @@ namespace GuardianAR
                 originSet = true;
             }
 
+            // 최신 데이터 강제 새로고침 (web에서 새 타워 배치했을 가능성)
+            if (GameManager.Instance != null)
+            {
+                GameManager.Instance.LoadUserData();  // MyTerritories + MyFixedGuardians 갱신
+            }
+
             PlaceMyGuardian();
             RefreshEnemyObjects();
             RefreshTerritories();
+            RefreshMyTowers();
         }
 
         public void ExitARMode()
@@ -95,25 +102,29 @@ namespace GuardianAR
             ClearAll();
         }
 
-        // ─── 내 수호신 ─────────────────────────────────────────────────
+        // ─── 내 수호신 (카메라 앞 고정, GPS 앵커 없음) ───────────────
         private void PlaceMyGuardian()
         {
-            if (myGuardianObj == null && myGuardianARPrefab != null)
-            {
-                myGuardianObj = Instantiate(myGuardianARPrefab);
-                PositionInFront(myGuardianObj.transform, 1.5f);
+            if (myGuardianObj != null || myGuardianARPrefab == null) return;
 
-                var g = GameManager.Instance.MyGuardian;
-                if (g != null)
-                    myGuardianObj.GetComponent<GuardianARObject>()?.Setup(g, true);
-            }
+            myGuardianObj = Instantiate(myGuardianARPrefab);
+
+            // 내 수호신은 ARWorldAnchor 없이 카메라 앞에 배치
+            var anchor = myGuardianObj.GetComponent<ARWorldAnchor>();
+            if (anchor != null) anchor.enabled = false;
+
+            PositionInFront(myGuardianObj.transform, 1.5f);
+
+            var g = GameManager.Instance.MyGuardian;
+            if (g != null)
+                myGuardianObj.GetComponent<GuardianARObject>()?.Setup(g, true);
         }
 
         private void OnLocationUpdated(LatLng loc)
         {
             if (!originSet) { AROrigin = loc; originSet = true; }
 
-            // 내 수호신은 항상 카메라 앞
+            // 내 수호신은 항상 카메라 1.5m 앞
             if (myGuardianObj != null)
                 PositionInFront(myGuardianObj.transform, 1.5f);
 
@@ -121,8 +132,76 @@ namespace GuardianAR
             {
                 RefreshEnemyObjects();
                 RefreshTerritories();
+                RefreshMyTowers();
             }
         }
+
+        // ─── 내 타워 AR 스폰 (3D Piloto Studio 모델) ──────────────────
+        private ARFixedGuardianPlacer _placerCache;
+        private ARFixedGuardianPlacer Placer => _placerCache ??= FindObjectOfType<ARFixedGuardianPlacer>();
+
+        private void RefreshMyTowers()
+        {
+            if (!originSet) return;
+            var gm = GameManager.Instance;
+            if (gm == null || gm.MyFixedGuardians == null) return;
+
+            // 신규/업데이트
+            foreach (var fg in gm.MyFixedGuardians)
+            {
+                if (fg.position == null) continue;
+
+                if (!arMyTowers.ContainsKey(fg.id))
+                {
+                    var prefab = Placer != null
+                        ? Placer.GetTowerPrefab(fg.towerClass ?? "generic", Mathf.Clamp(fg.tier, 1, 5))
+                        : myFixedGuardianARPrefab;
+                    if (prefab == null) continue;
+
+                    var obj = Instantiate(prefab);
+                    arMyTowers[fg.id] = obj;
+
+                    // 티어 시각 보정 (Lv1 모델 + 스케일/색조)
+                    float scale = 1f + (Mathf.Clamp(fg.tier, 1, 5) - 1) * 0.12f;
+                    obj.transform.localScale = Vector3.one * scale;
+
+                    // 라벨 추가 (이름 + 티어)
+                    var labelObj = new GameObject("Label");
+                    labelObj.transform.SetParent(obj.transform, false);
+                    labelObj.transform.localPosition = new Vector3(0, 1.2f * scale, 0);
+                    var tmp = labelObj.AddComponent<TMPro.TextMeshPro>();
+                    tmp.text = $"{(fg.towerClass ?? "tower").ToUpper()} L{fg.tier}";
+                    tmp.fontSize = 1.5f;
+                    tmp.alignment = TMPro.TextAlignmentOptions.Center;
+                    tmp.color = TierColor(fg.tier);
+                }
+
+                // 위치 갱신
+                arMyTowers[fg.id].transform.position = GPSToWorld(fg.position) + Vector3.up * 0.05f;
+
+                // 라벨이 카메라 향하도록
+                var lbl = arMyTowers[fg.id].transform.Find("Label");
+                if (lbl != null && Camera.main != null)
+                    lbl.LookAt(Camera.main.transform);
+            }
+
+            // 사라진 타워 제거 (서버에서 격파/이동된 경우)
+            var alive = new HashSet<string>();
+            foreach (var fg in gm.MyFixedGuardians) alive.Add(fg.id);
+            var toRemove = new List<string>();
+            foreach (var kv in arMyTowers) if (!alive.Contains(kv.Key)) toRemove.Add(kv.Key);
+            foreach (var k in toRemove) { Destroy(arMyTowers[k]); arMyTowers.Remove(k); }
+        }
+
+        static Color TierColor(int tier) => tier switch
+        {
+            1 => new Color(0.65f, 0.65f, 0.70f),
+            2 => new Color(0.30f, 0.85f, 0.50f),
+            3 => new Color(0.65f, 0.55f, 0.95f),
+            4 => new Color(0.96f, 0.62f, 0.04f),
+            5 => new Color(0.96f, 0.27f, 0.37f),
+            _ => Color.white
+        };
 
         // ─── 적 플레이어 / 고정 수호신 ────────────────────────────────
         private void RefreshEnemyObjects()
@@ -189,10 +268,27 @@ namespace GuardianAR
 
                 var rend = go.GetComponent<Renderer>();
                 if (rend != null)
-                    rend.material.color = t.isOwn
-                        ? new Color(0f, 1f, 0.53f, 0.3f)
-                        : new Color(1f, 0.27f, 0.27f, 0.3f);
+                {
+                    bool vulnerable = IsVulnerable(t);
+                    Color c;
+                    if (vulnerable)        c = new Color(1f, 0.85f, 0f, 0.4f);  // 노란 발광
+                    else if (t.isOwn)      c = new Color(0f, 1f, 0.53f, 0.3f);
+                    else                   c = new Color(1f, 0.27f, 0.27f, 0.3f);
+                    rend.material.color = c;
+                    if (rend.material.HasProperty("_EmissionColor"))
+                        rend.material.SetColor("_EmissionColor", c * (vulnerable ? 2f : 0.5f));
+                }
             }
+        }
+
+        static bool IsVulnerable(Territory t)
+        {
+            if (string.IsNullOrEmpty(t.vulnerable_until)) return false;
+            if (System.DateTime.TryParse(t.vulnerable_until, null,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out var until))
+                return until > System.DateTime.UtcNow;
+            return false;
         }
 
         // ─── 내가 배치한 고정 수호신 즉시 AR 스폰 (ARFixedGuardianPlacer 호출) ──
@@ -251,12 +347,14 @@ namespace GuardianAR
             foreach (var kv in arPlayers) Destroy(kv.Value);
             foreach (var kv in arFixedGuardians) Destroy(kv.Value);
             foreach (var kv in arMyFixedGuardians) Destroy(kv.Value);
+            foreach (var kv in arMyTowers) Destroy(kv.Value);
             foreach (var kv in arTerritories) Destroy(kv.Value);
             if (myGuardianObj != null) Destroy(myGuardianObj);
 
             arPlayers.Clear();
             arFixedGuardians.Clear();
             arMyFixedGuardians.Clear();
+            arMyTowers.Clear();
             arTerritories.Clear();
             myGuardianObj = null;
             originSet = false;

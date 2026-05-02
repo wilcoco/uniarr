@@ -1,10 +1,14 @@
 using System;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.EnhancedTouch;
+using Touch = UnityEngine.InputSystem.EnhancedTouch.Touch;
 
 namespace GuardianAR
 {
     /// <summary>
     /// 맵 터치 입력 — 1손가락 드래그(패닝), 2손가락 핀치(줌)
+    /// New Input System 사용
     /// </summary>
     public class MapInputHandler : MonoBehaviour
     {
@@ -20,6 +24,16 @@ namespace GuardianAR
         private float lastPinchDistance;
         private int zoomCooldown;
 
+        void OnEnable()
+        {
+            EnhancedTouchSupport.Enable();
+        }
+
+        void OnDisable()
+        {
+            EnhancedTouchSupport.Disable();
+        }
+
         void Update()
         {
 #if UNITY_EDITOR
@@ -29,36 +43,46 @@ namespace GuardianAR
 #endif
         }
 
-        // ─── 에디터 마우스 ────────────────────────────────────────────
+        // ─── 에디터 마우스 (New Input System) ────────────────────────
         private void HandleMouse()
         {
-            if (Input.GetMouseButtonDown(0))   BeginDrag(Input.mousePosition);
-            else if (Input.GetMouseButton(0) && isDragging) UpdateDrag(Input.mousePosition);
-            else if (Input.GetMouseButtonUp(0) && isDragging) EndDrag();
+            var mouse = Mouse.current;
+            if (mouse == null) return;
 
-            float scroll = Input.GetAxis("Mouse ScrollWheel");
+            Vector2 mousePos = mouse.position.ReadValue();
+
+            if (mouse.leftButton.wasPressedThisFrame)
+                BeginDrag(mousePos);
+            else if (mouse.leftButton.isPressed && isDragging)
+                UpdateDrag(mousePos);
+            else if (mouse.leftButton.wasReleasedThisFrame && isDragging)
+                EndDrag();
+
+            float scroll = mouse.scroll.ReadValue().y;
             if (scroll != 0f) tileManager.ChangeZoom(scroll > 0 ? 1 : -1);
         }
 
-        // ─── 모바일 터치 ─────────────────────────────────────────────
+        // ─── 모바일 터치 (Enhanced Touch) ────────────────────────────
         private void HandleTouch()
         {
-            if (Input.touchCount == 1)
+            var touches = Touch.activeTouches;
+
+            if (touches.Count == 1)
             {
                 isPinching = false;
-                var t = Input.GetTouch(0);
-                switch (t.phase)
-                {
-                    case TouchPhase.Began:    BeginDrag(t.position);  break;
-                    case TouchPhase.Moved:    UpdateDrag(t.position); break;
-                    case TouchPhase.Ended:
-                    case TouchPhase.Canceled: if (isDragging) EndDrag(); break;
-                }
+                var t = touches[0];
+                if (t.phase == UnityEngine.InputSystem.TouchPhase.Began)
+                    BeginDrag(t.screenPosition);
+                else if (t.phase == UnityEngine.InputSystem.TouchPhase.Moved)
+                    UpdateDrag(t.screenPosition);
+                else if (t.phase == UnityEngine.InputSystem.TouchPhase.Ended ||
+                         t.phase == UnityEngine.InputSystem.TouchPhase.Canceled)
+                    if (isDragging) EndDrag();
             }
-            else if (Input.touchCount == 2)
+            else if (touches.Count == 2)
             {
                 isDragging = false;
-                HandlePinch();
+                HandlePinch(touches[0].screenPosition, touches[1].screenPosition);
             }
             else
             {
@@ -87,7 +111,6 @@ namespace GuardianAR
             Vector2 offset = tileContainer.anchoredPosition;
             if (offset.magnitude < 5f) { ResetContainers(); return; }
 
-            // 픽셀 → GPS 오프셋
             var center = tileManager.MapCenter;
             if (center == null) { ResetContainers(); return; }
 
@@ -100,9 +123,9 @@ namespace GuardianAR
         }
 
         // ─── 핀치 줌 ─────────────────────────────────────────────────
-        private void HandlePinch()
+        private void HandlePinch(Vector2 pos0, Vector2 pos1)
         {
-            float dist = Vector2.Distance(Input.GetTouch(0).position, Input.GetTouch(1).position);
+            float dist = Vector2.Distance(pos0, pos1);
 
             if (!isPinching) { lastPinchDistance = dist; isPinching = true; return; }
             if (zoomCooldown > 0) { zoomCooldown--; return; }

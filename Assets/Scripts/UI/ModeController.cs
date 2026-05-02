@@ -19,42 +19,45 @@ namespace GuardianAR
         [Header("Controllers")]
         [SerializeField] private ARModeController arController;
 
-        [Header("공통 UI")]
+        [Header("Common UI")]
         [SerializeField] private GameObject hudRoot;
         [SerializeField] private GameObject battleModalRoot;
 
         void Awake()
         {
-            if (Instance != null) { Destroy(gameObject); return; }
             Instance = this;
         }
 
         void Start()
         {
             SetMode(GameMode.Map);
-            GameManager.Instance.OnBattleTriggered += _ => battleModalRoot.SetActive(true);
-            GameManager.Instance.OnBattleEnded     += () => battleModalRoot.SetActive(false);
+            if (GameManager.Instance != null && battleModalRoot != null)
+            {
+                GameManager.Instance.OnBattleTriggered += _ => battleModalRoot.SetActive(true);
+                GameManager.Instance.OnBattleEnded     += () => battleModalRoot.SetActive(false);
+            }
         }
 
         public void SwitchToAR()
         {
             if (CurrentMode == GameMode.AR) return;
             SetMode(GameMode.AR);
-            arController.EnterARMode();
+            if (arController != null) arController.EnterARMode();
         }
 
         public void SwitchToMap()
         {
             if (CurrentMode == GameMode.Map) return;
-            arController.ExitARMode();
+            if (arController != null) arController.ExitARMode();
             SetMode(GameMode.Map);
         }
 
+        // WebView 모드(v3): mapModeRoot 없이 동작 — null 안전 처리
         private void SetMode(GameMode mode)
         {
             CurrentMode = mode;
-            mapModeRoot.SetActive(mode == GameMode.Map);
-            arModeRoot.SetActive(mode == GameMode.AR);
+            if (mapModeRoot != null) mapModeRoot.SetActive(mode == GameMode.Map);
+            if (arModeRoot  != null) arModeRoot.SetActive(mode == GameMode.AR);
         }
     }
 }

@@ -78,6 +78,20 @@ namespace GuardianAR
             {
                 resultPanel.SetActive(false);
                 GameManager.Instance.EndBattle();
+
+                // AR 결과를 web으로 전달 + WebView로 복귀
+                var ab = GameManager.Instance?.ActiveBattle;
+                if (WebGameController.Instance != null && ab?.result != null)
+                {
+                    WebGameController.Instance.SendBattleResult(
+                        ab.result.winner ?? "",
+                        ab.result.attackerPower,
+                        ab.result.defenderPower);
+                }
+                else if (WebGameController.Instance != null)
+                {
+                    WebGameController.Instance.SwitchToMap();
+                }
             });
         }
 
@@ -146,7 +160,7 @@ namespace GuardianAR
             BattleResult result = null;
             bool apiDone = false;
 
-            GameManager.Instance.RespondToBattle("battle", r =>
+            GameManager.Instance.RespondToBattle("battle", arMode: true, ultActivated: playerUsedUltimate, r =>
             {
                 result = r;
                 apiDone = true;
@@ -195,7 +209,7 @@ namespace GuardianAR
                 // 궁극기 연출
                 if (frame.attackerUsedUlt && frame.isAttackerTurn)
                 {
-                    yield return StartCoroutine(ShowBattleStatus("⚡ Ultimate!"));
+                    yield return StartCoroutine(ShowBattleStatus("Ultimate!"));
                     yield return StartCoroutine(
                         attackEffect.PlayUltimate(attTr, myGuardian?.type ?? "animal"));
                 }
@@ -293,12 +307,12 @@ namespace GuardianAR
             resultPanel.SetActive(true);
 
             bool iWon = result.winner == "attacker";
-            resultTitle.text = iWon ? "🎉 Victory!" : "💀 Defeat...";
+            resultTitle.text = iWon ? "Victory!" : "Defeat...";
             resultTitle.color = iWon ? Color.green : Color.red;
 
             string detail = $"My Power: {result.attackerPower}  vs  Enemy: {result.defenderPower}\n";
             if (iWon && result.absorbed != null)
-                detail += $"Absorbed → ATK+{result.absorbed.atk}  DEF+{result.absorbed.def}  HP+{result.absorbed.hp}";
+                detail += $"Absorbed -> ATK+{result.absorbed.atk}  DEF+{result.absorbed.def}  HP+{result.absorbed.hp}";
             resultDetail.text = detail;
 
             CleanupBattle();

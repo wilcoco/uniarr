@@ -4,57 +4,63 @@ using UnityEngine;
 namespace GuardianAR
 {
     /// <summary>
-    /// AR 공간에 배치되는 수호신 오브젝트
+    /// AR 공간에 배치되는 수호신 박스 오브젝트.
     /// </summary>
+    [RequireComponent(typeof(ARWorldAnchor))]
     public class GuardianARObject : MonoBehaviour
     {
         [SerializeField] private TextMeshPro nameLabel;
         [SerializeField] private TextMeshPro typeLabel;
         [SerializeField] private Renderer bodyRenderer;
 
-        // 수호신 타입별 색상
-        private static readonly Color animalColor = new(0.2f, 0.8f, 0.2f);
-        private static readonly Color robotColor = new(0.2f, 0.6f, 1f);
+        private static readonly Color animalColor   = new(0.2f, 0.8f, 0.2f);
+        private static readonly Color robotColor    = new(0.2f, 0.6f, 1f);
         private static readonly Color aircraftColor = new(1f, 0.8f, 0.2f);
-        private static readonly Color myGuardianGlow = new(1f, 0.84f, 0f); // 금색
+        private static readonly Color myColor       = new(1f, 0.84f, 0f);
+
+        private ARWorldAnchor anchor;
+
+        void Awake() => anchor = GetComponent<ARWorldAnchor>();
+
+        void Update()
+        {
+            // 이름 레이블이 항상 카메라를 향하도록
+            if (Camera.main != null && nameLabel != null)
+                nameLabel.transform.rotation = Camera.main.transform.rotation;
+        }
 
         public void Setup(Guardian guardian, bool isMine)
         {
-            if (typeLabel != null)
-                typeLabel.text = GetTypeEmoji(guardian.type);
-
-            if (nameLabel != null)
-                nameLabel.text = isMine ? "나" : "";
-
-            ApplyColor(guardian.type, isMine);
+            if (typeLabel != null) typeLabel.text = GetTypeEmoji(guardian.type);
+            if (nameLabel != null) nameLabel.text = isMine ? "Me" : "";
+            ApplyColor(isMine ? myColor : GetColor(guardian.type));
             UpdateScale(guardian.stats);
         }
 
         public void Setup(NearbyPlayer player)
         {
-            if (nameLabel != null)
-                nameLabel.text = player.username;
-
+            if (nameLabel != null) nameLabel.text = player.username;
             if (player.guardian != null)
             {
-                if (typeLabel != null)
-                    typeLabel.text = GetTypeEmoji(player.guardian.type);
-                ApplyColor(player.guardian.type, false);
+                if (typeLabel != null) typeLabel.text = GetTypeEmoji(player.guardian.type);
+                ApplyColor(GetColor(player.guardian.type));
                 UpdateScale(player.guardian.stats);
             }
+            if (player.location != null)
+                anchor.SetPosition(player.location, 0f);
         }
 
-        private void ApplyColor(string type, bool isMine)
+        public void SetGPSPosition(LatLng gps, float yOffset = 0f)
+            => anchor.SetPosition(gps, yOffset);
+
+        private void ApplyColor(Color color)
         {
             if (bodyRenderer == null) return;
-            Color c = isMine ? myGuardianGlow :
-                      type == "animal" ? animalColor :
-                      type == "robot" ? robotColor : aircraftColor;
-            bodyRenderer.material.color = c;
-            bodyRenderer.material.SetColor("_EmissionColor", c * 2f);
+            bodyRenderer.material.color = color;
+            if (bodyRenderer.material.HasProperty("_EmissionColor"))
+                bodyRenderer.material.SetColor("_EmissionColor", color * 1.5f);
         }
 
-        // 총 스탯에 비례해 크기 조절 (최소 0.5, 최대 2.0)
         private void UpdateScale(GuardianStats stats)
         {
             if (stats == null) return;
@@ -63,19 +69,20 @@ namespace GuardianAR
             transform.localScale = Vector3.one * scale;
         }
 
-        private string GetTypeEmoji(string type) => type switch
+        private static Color GetColor(string type) => type switch
         {
-            "animal" => "🦁",
-            "robot" => "🤖",
-            "aircraft" => "✈",
-            _ => "?"
+            "animal"   => animalColor,
+            "robot"    => robotColor,
+            "aircraft" => aircraftColor,
+            _          => Color.white
         };
 
-        void Update()
+        private static string GetTypeEmoji(string type) => type switch
         {
-            // 항상 카메라를 향하도록 회전 (빌보드)
-            if (Camera.main != null)
-                transform.LookAt(Camera.main.transform);
-        }
+            "animal"   => "A",
+            "robot"    => "R",
+            "aircraft" => "F",
+            _          => "?"
+        };
     }
 }

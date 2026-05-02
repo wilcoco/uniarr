@@ -15,7 +15,7 @@ namespace GuardianAR
         public void Setup(FixedGuardian fg)
         {
             if (ownerLabel != null) ownerLabel.text = $"{fg.owner} DEF:{fg.Def}";
-            if (typeLabel != null) typeLabel.text = fg.type == "production" ? "⚙" : "🛡";
+            if (typeLabel != null) typeLabel.text = fg.type == "production" ? "PRD" : "DEF";
 
             if (bodyRenderer != null)
             {

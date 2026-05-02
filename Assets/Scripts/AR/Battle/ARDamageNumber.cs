@@ -24,7 +24,7 @@ namespace GuardianAR
 
         public void Play(int damage, bool isCritical)
         {
-            label.text = isCritical ? $"💥{damage}!" : damage.ToString();
+            label.text = isCritical ? $"CRIT {damage}!" : damage.ToString();
             label.color = isCritical ? Color.yellow : Color.white;
             label.fontSize = isCritical ? 0.18f : 0.13f;
             StartCoroutine(Animate());

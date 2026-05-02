@@ -22,7 +22,7 @@ namespace GuardianAR
         [SerializeField] private GameObject fixedGuardianPrefab;
         [SerializeField] private GameObject territoryCirclePrefab; // LineRenderer 포함
 
-        [Header("AR 전환 버튼")]
+        [Header("AR Mode Button")]
         [SerializeField] private Button arModeButton;
 
         // 런타임 마커 인스턴스
@@ -116,8 +116,25 @@ namespace GuardianAR
 
                 // 반경 픽셀 = 반경(m) / m-per-pixel
                 float radiusPx = t.radius / tileManager.MetersPerPixel;
-                go.GetComponent<TerritoryCircle>()?.SetCircle(radiusPx, t.isOwn);
+                bool vulnerable = IsVulnerable(t);
+                var circle = go.GetComponent<TerritoryCircle>();
+                if (circle != null)
+                {
+                    circle.SetCircle(radiusPx, t.isOwn);
+                    circle.SetVulnerable(vulnerable);
+                }
             }
+        }
+
+        // 영역이 취약 상태인지 검사 (vulnerable_until > NOW)
+        static bool IsVulnerable(Territory t)
+        {
+            if (string.IsNullOrEmpty(t.vulnerable_until)) return false;
+            if (System.DateTime.TryParse(t.vulnerable_until, null,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out var until))
+                return until > System.DateTime.UtcNow;
+            return false;
         }
 
         // ─── 주변 플레이어 / 고정 수호신 ──────────────────────────────

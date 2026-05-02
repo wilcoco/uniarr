@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 9002d2a98477cf341b40334b5020a03f
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 320370
+  packageName: Tower Defense Kit Megapack
+  packageVersion: 2.0
+  assetPath: Assets/Piloto Studio/TowerDefenseStarterPack/Scripts/TowerDefense_RotateAround.cs
+  uploadId: 815114

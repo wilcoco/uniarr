@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "905539278268",
+    "project_id": "arrr-b4513",
+    "storage_bucket": "arrr-b4513.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:905539278268:android:d6fea025c2582745ff87b9",
+        "android_client_info": {
+          "package_name": "com.araregames.arrr"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCj8RymAnrQmbYCIBxp5L1woQ_s-mkBwJg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

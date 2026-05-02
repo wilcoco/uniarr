@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 5ec0a261bf242a24ea0bfd9bb6997495
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 320370
+  packageName: Tower Defense Kit Megapack
+  packageVersion: 2.0
+  assetPath: Assets/Piloto Studio/TowerDefenseStarterPack/Scripts/TowerDefensePack_FloatingObject.cs
+  uploadId: 815114
