@@ -8,8 +8,8 @@ using TMPro;
 namespace GuardianAR
 {
     /// <summary>
-    /// AR 평면을 감지해 고정 수호신을 배치
-    /// 흐름: 모드 진입 → 바닥 스캔 → 탭으로 위치 선택 → 타입/스탯 설정 → 확인 → API
+    /// AR 평면을 감지해 13종 타워를 배치 (신 /api/towers/place)
+    /// 흐름: 모드 진입 → 영역 선택 → 클래스 선택 → 티어 선택 → 바닥 탭 → API → 즉시 스폰
     /// </summary>
     public class ARFixedGuardianPlacer : MonoBehaviour
     {
@@ -20,14 +20,12 @@ namespace GuardianAR
         [SerializeField] private ARPlaneManager planeManager;
 
         [Header("Preview")]
-        [SerializeField] private GameObject previewPrefab;      // 반투명 배치 인디케이터
-        [SerializeField] private GameObject placementIndicator; // 화살표/원형 가이드
+        [SerializeField] private GameObject previewPrefab;
+        [SerializeField] private GameObject placementIndicator;
 
-        [Header("Piloto Studio Tower Prefabs — 13종 × 5레벨")]
-        [Tooltip("자동 매핑 ON 이면 Resources.Load로 SM_TowerDefense_{class}_Lv{level} 자동 사용")]
+        [Header("Piloto Studio Tower Prefabs")]
         [SerializeField] private bool autoLoadFromPiloto = true;
 
-        // 수동 모드 — Lv1 프리팹만 슬롯에 넣음 (Lv2~5는 자동으로 같은 폴더에서 찾음)
         [SerializeField] private GameObject genericTowerLv1, balistaTowerLv1, cannonTowerLv1, assaultTowerLv1,
                                              scifiTowerLv1, fireTowerLv1, iceTowerLv1, aquaTowerLv1,
                                              electricTowerLv1, natureTowerLv1, venomTowerLv1, arcaneTowerLv1, crystalTowerLv1;
@@ -44,7 +42,6 @@ namespace GuardianAR
                 _          => "Generic"
             };
 
-            // 1순위: 에디터 AssetDatabase (개발/플레이 모드)
 #if UNITY_EDITOR
             if (autoLoadFromPiloto)
             {
@@ -53,14 +50,11 @@ namespace GuardianAR
                 if (p != null) return p;
             }
 #endif
-            // 2순위: Resources/Towers 폴더 (안드로이드 빌드 — Lv 별 가능)
             var res = Resources.Load<GameObject>($"Towers/SM_TowerDefense_{pilotoName}_Lv{level}");
             if (res != null) return res;
-            // 2-1: Lv1 폴백
             res = Resources.Load<GameObject>($"Towers/SM_TowerDefense_{pilotoName}_Lv1");
             if (res != null) return res;
 
-            // 3순위: Inspector 수동 슬롯 (Lv1만)
             GameObject manual = towerClass switch
             {
                 "balista"  => balistaTowerLv1, "cannon"   => cannonTowerLv1,   "assault"  => assaultTowerLv1,
@@ -72,67 +66,92 @@ namespace GuardianAR
             return manual ?? previewPrefab;
         }
 
-        [Header("Setup Panel UI")]
-        [SerializeField] private GameObject setupPanel;
-        [SerializeField] private Button defenseTypeBtn;
-        [SerializeField] private Button productionTypeBtn;
-        [SerializeField] private Slider atkSlider;
-        [SerializeField] private Slider defSlider;
-        [SerializeField] private Slider hpSlider;
-        [SerializeField] private TextMeshProUGUI atkLabel;
-        [SerializeField] private TextMeshProUGUI defLabel;
-        [SerializeField] private TextMeshProUGUI hpLabel;
-        [SerializeField] private TextMeshProUGUI remainingStatsLabel;
-        [SerializeField] private Button confirmBtn;
-        [SerializeField] private Button cancelBtn;
+        // 13종 클래스 메타 (한글 라벨 + 비용 + 사거리 — UI 표시용)
+        public class TowerClassInfo
+        {
+            public string key;
+            public string label;
+            public int costLv1;
+            public int rangeLv1;
+            public int dpsLv1; // 대략값
+            public string desc;
+        }
 
-        [Header("Scan Hint")]
-        [SerializeField] private GameObject scanHintPanel;      // "바닥을 스캔하세요" 안내
+        // 라벨/설명은 ASCII — 기본 TMP 폰트(LiberationSans)에 한글 글리프 없음.
+        // 한글 보고 싶으면 Korean TMP 폰트 추가 후 fallback 등록 필요.
+        public static readonly TowerClassInfo[] CLASSES = new[]
+        {
+            new TowerClassInfo { key="generic",  label="Generic",  costLv1=30, rangeLv1=80,  dpsLv1=3,  desc="Balanced starter" },
+            new TowerClassInfo { key="balista",  label="Balista",  costLv1=50, rangeLv1=150, dpsLv1=4,  desc="Long range, first shot +50%" },
+            new TowerClassInfo { key="cannon",   label="Cannon",   costLv1=70, rangeLv1=100, dpsLv1=5,  desc="30m AOE blast" },
+            new TowerClassInfo { key="assault",  label="Assault",  costLv1=50, rangeLv1=70,  dpsLv1=6,  desc="Rapid fire" },
+            new TowerClassInfo { key="scifi",    label="SciFi",    costLv1=75, rangeLv1=130, dpsLv1=7,  desc="Pierce +30%" },
+            new TowerClassInfo { key="fire",     label="Fire",     costLv1=55, rangeLv1=60,  dpsLv1=4,  desc="5s burn DoT" },
+            new TowerClassInfo { key="ice",      label="Ice",      costLv1=60, rangeLv1=80,  dpsLv1=2,  desc="Vuln 10s" },
+            new TowerClassInfo { key="aqua",     label="Aqua",     costLv1=60, rangeLv1=90,  dpsLv1=4,  desc="Vuln 5min" },
+            new TowerClassInfo { key="electric", label="Electric", costLv1=65, rangeLv1=75,  dpsLv1=3,  desc="Chain +50%" },
+            new TowerClassInfo { key="nature",   label="Nature",   costLv1=50, rangeLv1=50,  dpsLv1=0,  desc="Adjacent heal" },
+            new TowerClassInfo { key="venom",    label="Venom",    costLv1=55, rangeLv1=65,  dpsLv1=2,  desc="Stacking poison" },
+            new TowerClassInfo { key="arcane",   label="Arcane",   costLv1=70, rangeLv1=100, dpsLv1=4,  desc="Combine debuff" },
+            new TowerClassInfo { key="crystal",  label="Crystal",  costLv1=80, rangeLv1=40,  dpsLv1=0,  desc="Ally synergy +10%" }
+        };
 
-        [Header("Territory Select Panel")]
+        [Header("UI Panels")]
+        [SerializeField] private GameObject scanHintPanel;
         [SerializeField] private GameObject territorySelectPanel;
         [SerializeField] private Transform territoryListContainer;
         [SerializeField] private GameObject territoryItemPrefab;
+
+        [Header("Tower Class Picker (신규)")]
+        [SerializeField] private GameObject classPickerPanel;
+        [SerializeField] private Transform classListContainer;     // 13개 버튼 부모 (Grid Layout 권장)
+        [SerializeField] private GameObject classItemPrefab;       // 1개 버튼 프리팹 (Image+Label)
+        [SerializeField] private Slider tierSlider;                // 1-5
+        [SerializeField] private TextMeshProUGUI tierLabel;
+        [SerializeField] private TextMeshProUGUI selectedClassLabel;
+        [SerializeField] private TextMeshProUGUI costLabel;
+        [SerializeField] private TextMeshProUGUI energyLabel;
+        [SerializeField] private Button classConfirmBtn;
+        [SerializeField] private Button classCancelBtn;
 
         // 상태
         private bool isPlacementMode = false;
         private GameObject previewInstance;
         private Vector3 selectedWorldPos;
         private LatLng selectedGPSPos;
-        private string selectedType = "defense";
         private string selectedTerritoryId;
+        private string selectedClass = "generic";
+        private int selectedTier = 1;
 
-        // 분배 가능한 스탯 (본체의 50%)
-        private int maxAtk, maxDef, maxHp;
+        // grant (직접 침투 격파 후 무료 발판 — 옵션)
+        private SlotGrant activeGrant;
 
         private List<ARRaycastHit> hits = new();
 
         void Awake()
         {
             Instance = this;
-            setupPanel.SetActive(false);
-            scanHintPanel.SetActive(false);
-            territorySelectPanel.SetActive(false);
+            if (scanHintPanel != null) scanHintPanel.SetActive(false);
+            if (territorySelectPanel != null) territorySelectPanel.SetActive(false);
+            if (classPickerPanel != null) classPickerPanel.SetActive(false);
             if (placementIndicator != null) placementIndicator.SetActive(false);
         }
 
         void Start()
         {
-            defenseTypeBtn.onClick.AddListener(() => SelectType("defense"));
-            productionTypeBtn.onClick.AddListener(() => SelectType("production"));
-            confirmBtn.onClick.AddListener(ConfirmPlacement);
-            cancelBtn.onClick.AddListener(CancelPlacement);
-
-            atkSlider.onValueChanged.AddListener(_ => OnStatChanged());
-            defSlider.onValueChanged.AddListener(_ => OnStatChanged());
-            hpSlider.onValueChanged.AddListener(_ => OnStatChanged());
+            if (classConfirmBtn != null) classConfirmBtn.onClick.AddListener(ConfirmClassAndStartScan);
+            if (classCancelBtn  != null) classCancelBtn.onClick.AddListener(CancelPlacement);
+            if (tierSlider != null)
+            {
+                tierSlider.minValue = 1; tierSlider.maxValue = 5; tierSlider.wholeNumbers = true;
+                tierSlider.onValueChanged.AddListener(_ => UpdatePickerLabels());
+            }
         }
 
         void Update()
         {
-            if (!isPlacementMode) return;
+            if (!isPlacementMode || raycastManager == null) return;
 
-            // 화면 중앙 또는 터치 위치에서 AR Raycast
             Vector2 screenCenter = new Vector2(Screen.width / 2f, Screen.height / 2f);
             if (raycastManager.Raycast(screenCenter, hits, TrackableType.PlaneWithinPolygon))
             {
@@ -151,51 +170,55 @@ namespace GuardianAR
                     placementIndicator.transform.position = hitPose.position;
                 }
 
-                // 탭으로 위치 확정
                 if (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began)
                 {
                     OnPositionSelected(hitPose.position);
                 }
             }
-            else
+            else if (placementIndicator != null)
             {
-                if (placementIndicator != null) placementIndicator.SetActive(false);
+                placementIndicator.SetActive(false);
             }
         }
 
-        // ─── 배치 모드 시작 ────────────────────────────────────────────
+        // ─── 진입점 ────────────────────────────────────────────────────
         public void StartPlacementMode()
         {
-            var myGuardian = GameManager.Instance.MyGuardian;
-            if (myGuardian == null)
-            {
-                Debug.LogWarning("수호신이 없습니다");
-                return;
-            }
-
-            // 분배 가능 최대치 (본체 스탯의 50%)
-            maxAtk = myGuardian.stats.atk / 2;
-            maxDef = myGuardian.stats.def / 2;
-            maxHp = myGuardian.stats.hp / 2;
-
-            // 영역 먼저 선택
+            activeGrant = null;
             ShowTerritorySelect();
         }
 
+        // 직접 침투 격파 후 발판 모드로 진입
+        public void StartFootholdPlacement(SlotGrant grant)
+        {
+            activeGrant = grant;
+            selectedTerritoryId = grant.territoryId;
+            // grant는 Lv1 고정, 영역 선택 스킵 → 바로 클래스 picker
+            ShowClassPicker();
+        }
+
+        // ─── 영역 선택 ─────────────────────────────────────────────────
         private void ShowTerritorySelect()
         {
+            if (territorySelectPanel == null) return;
             territorySelectPanel.SetActive(true);
 
-            // 기존 목록 제거
             foreach (Transform child in territoryListContainer)
                 Destroy(child.gameObject);
 
-            // 내 영역 목록
-            foreach (var t in GameManager.Instance.MyTerritories)
+            var territories = GameManager.Instance.MyTerritories;
+            if (territories == null || territories.Count == 0)
+            {
+                Debug.LogWarning("내 영역이 없습니다. 먼저 확장하세요.");
+                territorySelectPanel.SetActive(false);
+                return;
+            }
+
+            foreach (var t in territories)
             {
                 var item = Instantiate(territoryItemPrefab, territoryListContainer);
                 var label = item.GetComponentInChildren<TextMeshProUGUI>();
-                if (label != null) label.text = $"Zone ({t.radius}m)";
+                if (label != null) label.text = $"Zone {(int)t.radius}m";
 
                 var btn = item.GetComponentInChildren<Button>();
                 var capturedId = t.id;
@@ -205,161 +228,209 @@ namespace GuardianAR
                     selectedTerritoryId = capturedId;
                     selectedGPSPos = capturedCenter;
                     territorySelectPanel.SetActive(false);
-                    BeginARPlacement();
+                    ShowClassPicker();
                 });
             }
         }
 
-        private void BeginARPlacement()
+        // ─── 클래스 / 티어 picker ──────────────────────────────────────
+        private void ShowClassPicker()
         {
-            isPlacementMode = true;
-            planeManager.enabled = true;
-            scanHintPanel.SetActive(true);
-
-            if (previewPrefab != null)
-                previewInstance = Instantiate(previewPrefab);
-        }
-
-        // ─── 위치 확정 ─────────────────────────────────────────────────
-        private void OnPositionSelected(Vector3 worldPos)
-        {
-            // 선택 위치의 GPS 좌표 계산 (AR 원점 기준 역변환)
-            var origin = ARModeController.Instance.AROrigin;
-            if (origin != null)
+            if (classPickerPanel == null)
             {
-                float dz = worldPos.z;
-                float dx = worldPos.x;
-                double latOffset = dz / 111320.0;
-                double lngOffset = dx / (111320.0 * System.Math.Cos(origin.lat * System.Math.PI / 180.0));
-                selectedGPSPos = new LatLng(origin.lat + latOffset, origin.lng + lngOffset);
+                // UI 없으면 fallback: 제네릭 Lv1로 즉시 진행
+                selectedClass = "generic";
+                selectedTier = 1;
+                BeginARScan();
+                return;
             }
 
+            classPickerPanel.SetActive(true);
+            BuildClassList();
+            UpdatePickerLabels();
+        }
+
+        private void BuildClassList()
+        {
+            if (classListContainer == null || classItemPrefab == null) return;
+
+            foreach (Transform child in classListContainer)
+                Destroy(child.gameObject);
+
+            foreach (var info in CLASSES)
+            {
+                var item = Instantiate(classItemPrefab, classListContainer);
+                var label = item.GetComponentInChildren<TextMeshProUGUI>();
+                if (label != null) label.text = info.label;
+
+                var img = item.GetComponentInChildren<Image>();
+                // 클래스 컬러 힌트
+                if (img != null) img.color = ClassTint(info.key);
+
+                var btn = item.GetComponent<Button>();
+                if (btn == null) btn = item.GetComponentInChildren<Button>();
+                var capKey = info.key;
+                if (btn != null)
+                    btn.onClick.AddListener(() => { selectedClass = capKey; UpdatePickerLabels(); });
+            }
+        }
+
+        private static Color ClassTint(string key) => key switch
+        {
+            "balista"  => new Color(0.85f, 0.78f, 0.42f),
+            "cannon"   => new Color(0.42f, 0.42f, 0.42f),
+            "assault"  => new Color(0.85f, 0.55f, 0.18f),
+            "scifi"    => new Color(0.40f, 0.85f, 0.95f),
+            "fire"     => new Color(0.95f, 0.36f, 0.18f),
+            "ice"      => new Color(0.65f, 0.92f, 1.00f),
+            "aqua"     => new Color(0.20f, 0.55f, 0.92f),
+            "electric" => new Color(1.00f, 0.93f, 0.30f),
+            "nature"   => new Color(0.40f, 0.82f, 0.40f),
+            "venom"    => new Color(0.55f, 0.85f, 0.30f),
+            "arcane"   => new Color(0.70f, 0.40f, 0.95f),
+            "crystal"  => new Color(0.80f, 0.55f, 0.95f),
+            _          => new Color(0.65f, 0.65f, 0.70f)
+        };
+
+        private void UpdatePickerLabels()
+        {
+            // foothold = Lv1 고정
+            if (activeGrant != null) selectedTier = 1;
+            else if (tierSlider != null) selectedTier = (int)tierSlider.value;
+            selectedTier = Mathf.Clamp(selectedTier, 1, 5);
+
+            var info = System.Array.Find(CLASSES, c => c.key == selectedClass) ?? CLASSES[0];
+
+            // 비용 = Lv1 비용 × 1.4^(L-1) (서버 공식)
+            int cost = activeGrant != null ? 0
+                : Mathf.RoundToInt(info.costLv1 * Mathf.Pow(1.4f, selectedTier - 1));
+
+            if (tierLabel != null) tierLabel.text = activeGrant != null ? "Lv1 (foothold)" : $"Lv{selectedTier}";
+            if (selectedClassLabel != null) selectedClassLabel.text = $"{info.label} - {info.desc}";
+            if (costLabel != null) costLabel.text = activeGrant != null ? "FREE (foothold)" : $"Cost {cost} energy";
+
+            int energy = GameManager.Instance.Energy;
+            if (energyLabel != null) energyLabel.text = $"Have {energy}";
+            if (classConfirmBtn != null)
+                classConfirmBtn.interactable = activeGrant != null || energy >= cost;
+        }
+
+        // ─── 클래스 확정 → AR 스캔 ─────────────────────────────────────
+        private void ConfirmClassAndStartScan()
+        {
+            if (classPickerPanel != null) classPickerPanel.SetActive(false);
+            BeginARScan();
+        }
+
+        private void BeginARScan()
+        {
+            isPlacementMode = true;
+            if (planeManager != null) planeManager.enabled = true;
+            if (scanHintPanel != null) scanHintPanel.SetActive(true);
+
+            // 미리보기 — 선택한 타워 프리팹 사용
+            if (previewInstance != null) Destroy(previewInstance);
+            var prefab = GetTowerPrefab(selectedClass, selectedTier);
+            if (prefab != null)
+            {
+                previewInstance = Instantiate(prefab);
+                // 반투명 처리
+                foreach (var rend in previewInstance.GetComponentsInChildren<Renderer>())
+                {
+                    foreach (var m in rend.materials)
+                    {
+                        if (m.HasProperty("_Color"))
+                        {
+                            var c = m.color; c.a = 0.55f; m.color = c;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ─── 위치 확정 → 즉시 API ──────────────────────────────────────
+        private void OnPositionSelected(Vector3 worldPos)
+        {
             isPlacementMode = false;
-            scanHintPanel.SetActive(false);
+            if (scanHintPanel != null) scanHintPanel.SetActive(false);
             if (placementIndicator != null) placementIndicator.SetActive(false);
 
-            ShowSetupPanel();
-        }
-
-        // ─── 스탯 설정 패널 ────────────────────────────────────────────
-        private void ShowSetupPanel()
-        {
-            setupPanel.SetActive(true);
-
-            atkSlider.maxValue = maxAtk;
-            defSlider.maxValue = maxDef;
-            hpSlider.maxValue = maxHp;
-
-            atkSlider.value = 0;
-            defSlider.value = 0;
-            hpSlider.value = 0;
-
-            SelectType("defense");
-            OnStatChanged();
-        }
-
-        private void SelectType(string type)
-        {
-            selectedType = type;
-
-            // 버튼 시각 피드백
-            var defColor = new Color(0.3f, 0.3f, 0.3f);
-            var activeColor = type == "defense"
-                ? new Color(0.27f, 0.53f, 1f)
-                : new Color(1f, 0.85f, 0f);
-
-            defenseTypeBtn.GetComponent<Image>().color = type == "defense" ? activeColor : defColor;
-            productionTypeBtn.GetComponent<Image>().color = type == "production" ? activeColor : defColor;
-        }
-
-        private void OnStatChanged()
-        {
-            int usedAtk = (int)atkSlider.value;
-            int usedDef = (int)defSlider.value;
-            int usedHp = (int)hpSlider.value;
-
-            atkLabel.text = $"ATK: {usedAtk}/{maxAtk}";
-            defLabel.text = $"DEF: {usedDef}/{maxDef}";
-            hpLabel.text = $"HP: {usedHp}/{maxHp}";
-
-            int total = usedAtk + usedDef + usedHp;
-            int maxTotal = maxAtk + maxDef + maxHp;
-            remainingStatsLabel.text = $"Remaining: {maxTotal - total}";
-
-            confirmBtn.interactable = total > 0;
-        }
-
-        // ─── 배치 확정 → API ───────────────────────────────────────────
-        private void ConfirmPlacement()
-        {
-            if (string.IsNullOrEmpty(selectedTerritoryId)) return;
-
-            int allocAtk = (int)atkSlider.value;
-            int allocDef = (int)defSlider.value;
-            int allocHp  = (int)hpSlider.value;
-
-            var req = new PlaceFixedGuardianRequest
+            // GPS 좌표로 역변환 (foothold는 grant.position 강제)
+            if (activeGrant != null)
             {
-                territoryId = selectedTerritoryId,
-                userId = GameManager.Instance.UserId,
-                lat = selectedGPSPos.lat,
-                lng = selectedGPSPos.lng,
-                stats = new PlaceStats { atk = allocAtk, def = allocDef, hp = allocHp },
-                guardianType = selectedType
-            };
-
-            confirmBtn.interactable = false;
-
-            ApiManager.Instance.PlaceFixedGuardian(req, json =>
+                selectedGPSPos = activeGrant.position;
+            }
+            else
             {
-                setupPanel.SetActive(false);
-
-                // AR 공간에 즉시 시각화
-                SpawnPlacedGuardianInAR(req);
-
-                // 본체 스탯 업데이트
-                GameManager.Instance.LoadUserData();
-
-                if (previewInstance != null)
+                var origin = ARModeController.Instance.AROrigin;
+                if (origin != null)
                 {
-                    Destroy(previewInstance);
-                    previewInstance = null;
+                    float dz = worldPos.z, dx = worldPos.x;
+                    double latOffset = dz / 111320.0;
+                    double lngOffset = dx / (111320.0 * System.Math.Cos(origin.lat * System.Math.PI / 180.0));
+                    selectedGPSPos = new LatLng(origin.lat + latOffset, origin.lng + lngOffset);
                 }
-                planeManager.enabled = false;
-            }, err =>
-            {
-                confirmBtn.interactable = true;
-                Debug.LogError($"고정 수호신 배치 실패: {err}");
-            });
+            }
+
+            ApiManager.Instance.PlaceTower(
+                GameManager.Instance.UserId,
+                selectedTerritoryId,
+                selectedClass,
+                selectedTier,
+                activeGrant?.id,
+                json =>
+                {
+                    Debug.Log($"[AR] 타워 배치 성공: {json}");
+                    SpawnPlacedTowerInAR(worldPos);
+                    GameManager.Instance.LoadUserData();
+                    if (previewInstance != null) { Destroy(previewInstance); previewInstance = null; }
+                    if (planeManager != null) planeManager.enabled = false;
+                    activeGrant = null;
+                },
+                err =>
+                {
+                    Debug.LogError($"[AR] 타워 배치 실패: {err}");
+                    // 다시 스캔 모드로
+                    isPlacementMode = true;
+                    if (scanHintPanel != null) scanHintPanel.SetActive(true);
+                });
         }
 
-        private void SpawnPlacedGuardianInAR(PlaceFixedGuardianRequest req)
+        private void SpawnPlacedTowerInAR(Vector3 worldPos)
         {
             var fg = new FixedGuardian
             {
                 id = System.Guid.NewGuid().ToString(),
-                type = req.guardianType,
+                type = "defense",
                 owner = GameManager.Instance.VisitorId,
-                position = new LatLng(req.lat, req.lng),
-                stats = new FixedGuardianStats
-                {
-                    atk = req.stats.atk,
-                    def = req.stats.def,
-                    hp = req.stats.hp
-                }
+                position = selectedGPSPos,
+                towerClass = selectedClass,
+                tier = selectedTier
             };
-
-            ARModeController.Instance.SpawnMyFixedGuardian(fg, selectedWorldPos);
+            ARModeController.Instance.SpawnMyFixedGuardian(fg, worldPos);
         }
 
-        private void CancelPlacement()
+        public void CancelPlacement()
         {
             isPlacementMode = false;
-            setupPanel.SetActive(false);
-            scanHintPanel.SetActive(false);
+            if (classPickerPanel != null) classPickerPanel.SetActive(false);
+            if (scanHintPanel != null) scanHintPanel.SetActive(false);
+            if (territorySelectPanel != null) territorySelectPanel.SetActive(false);
             if (previewInstance != null) { Destroy(previewInstance); previewInstance = null; }
             if (placementIndicator != null) placementIndicator.SetActive(false);
-            planeManager.enabled = false;
+            if (planeManager != null) planeManager.enabled = false;
+            activeGrant = null;
         }
+    }
+
+    [System.Serializable]
+    public class SlotGrant
+    {
+        public string id;
+        public string territoryId;
+        public LatLng position;
+        public string ownerName;
+        public string expiresAt;
+        public int secondsRemaining;
     }
 }

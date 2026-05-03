@@ -107,6 +107,21 @@ namespace GuardianAR
         public void PlaceFixedGuardian(PlaceFixedGuardianRequest req, Action<string> cb, Action<string> err = null)
             => Post("/api/territory/place-guardian", req, cb, err);
 
+        // 신 API — 13종 타워 배치 (towerClass + tier 모델)
+        public void PlaceTower(string userId, string territoryId, string towerClass, int tier,
+                               string grantId, Action<string> cb, Action<string> err = null)
+            => Post("/api/towers/place",
+                    new ReqPlaceTower {
+                        userId = userId, territoryId = territoryId,
+                        towerClass = towerClass, tier = tier, grantId = grantId
+                    }, cb, err);
+
+        public void GetTowerClasses(Action<string> cb, Action<string> err = null)
+            => Get("/api/towers/classes", cb, err);
+
+        public void GetSlotGrants(string userId, Action<string> cb, Action<string> err = null)
+            => Get($"/api/towers/grants/{userId}", cb, err);
+
         public void GetMyTerritoryForPosition(string userId, double lat, double lng, Action<string> cb, Action<string> err = null)
             => Get($"/api/territory/my/{userId}", cb, err);
 
@@ -176,4 +191,8 @@ namespace GuardianAR
     [System.Serializable] public class ReqPart           { public string userId; public string partId; }
     [System.Serializable] public class ReqUserId         { public string userId; }
     [System.Serializable] public class CombineRequest    { public string userId; public string[] partIds; }
+    [System.Serializable] public class ReqPlaceTower {
+        public string userId; public string territoryId; public string towerClass;
+        public int tier; public string grantId;
+    }
 }
