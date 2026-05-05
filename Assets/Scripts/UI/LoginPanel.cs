@@ -22,12 +22,17 @@ namespace GuardianAR
         {
             if (startButton != null) startButton.onClick.AddListener(OnStartClicked);
 
+            // 권한 버튼 listener는 항상 연결 — 씬 와이어링이 누락돼 패널이 노출되더라도
+            // 클릭이 dead-button이 되지 않게 함. 에디터에서는 OnAllowLocation이 즉시
+            // StartTracking을 호출해 강남역 좌표를 주입한다 (LocationManager UNITY_EDITOR 경로).
+            if (allowLocationButton != null) allowLocationButton.onClick.AddListener(OnAllowLocation);
+
 #if UNITY_EDITOR
             // 에디터: 위치 권한 UI/Allow 버튼 자체를 비활성화하고 GameObject도 숨김
             if (locationPanel != null) locationPanel.SetActive(false);
             if (allowLocationButton != null) allowLocationButton.gameObject.SetActive(false);
+            if (locationErrorText != null) locationErrorText.gameObject.SetActive(false);
 #else
-            if (allowLocationButton != null) allowLocationButton.onClick.AddListener(OnAllowLocation);
             if (locationPanel != null) locationPanel.SetActive(false);
 #endif
 
@@ -82,15 +87,22 @@ namespace GuardianAR
 
         private void OnAllowLocation()
         {
-            allowLocationButton.interactable = false;
-            locationErrorText.gameObject.SetActive(false);
+#if UNITY_EDITOR
+            // 에디터: 권한 요청 자체를 우회. UI 조작도 최소화 (씬 와이어링이 깨져있어도 안전).
+            HidePanels();
             LocationManager.Instance.StartTracking();
+            return;
+#else
+            if (allowLocationButton != null) allowLocationButton.interactable = false;
+            if (locationErrorText != null) locationErrorText.gameObject.SetActive(false);
+            LocationManager.Instance.StartTracking();
+#endif
         }
 
         private void HidePanels()
         {
-            loginPanel.SetActive(false);
-            locationPanel.SetActive(false);
+            if (loginPanel != null) loginPanel.SetActive(false);
+            if (locationPanel != null) locationPanel.SetActive(false);
         }
     }
 }
