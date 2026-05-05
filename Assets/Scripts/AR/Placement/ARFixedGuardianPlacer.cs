@@ -182,10 +182,14 @@ namespace GuardianAR
         }
 
         // ─── 진입점 ────────────────────────────────────────────────────
+        // β 모델: 영역 = 타워 1:1. 매 AR 배치 = 새 영역 생성.
+        // 기존 ShowTerritorySelect (영역 사전 선택)는 첫 사용자가 영역 0개라 "내 영역이 없습니다"로 막혔음.
+        // 대신 곧장 ClassPicker로 → 위치 스캔 → 새 영역 자동 생성.
         public void StartPlacementMode()
         {
             activeGrant = null;
-            ShowTerritorySelect();
+            selectedTerritoryId = null;  // β: 사전 선택 안 함
+            ShowClassPicker();
         }
 
         // 직접 침투 격파 후 발판 모드로 진입
@@ -373,13 +377,14 @@ namespace GuardianAR
             }
 
             // β 모델: territoryId가 아닌 GPS 위치 + claimRadiusM로 호출.
-            // 기본 반경 100m (AR 모드 단순화 — 추후 슬라이더 추가 가능).
+            // 기본 반경 50m (Lv1 cap = 50m이므로 모든 레벨에서 안전).
+            // 추후 ClassPicker 패널에 반경 슬라이더 추가하여 동적 cap 적용 가능.
             ApiManager.Instance.PlaceTower(
                 GameManager.Instance.UserId,
                 selectedGPSPos.lat, selectedGPSPos.lng,
                 selectedClass,
                 selectedTier,
-                100,                       // claimRadiusM 기본값
+                50,                        // claimRadiusM — Lv1도 가능한 최소값
                 activeGrant?.id,
                 json =>
                 {
