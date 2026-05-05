@@ -82,8 +82,13 @@ namespace GuardianAR
         public void GetNearbyFixedGuardians(double lat, double lng, float radius, string excludeUserId, Action<string> cb, Action<string> err = null)
             => Get($"/api/territory/nearby-fixed-guardians?lat={lat}&lng={lng}&radius={radius}&excludeUserId={excludeUserId}", cb, err);
 
+        // β 모델: /api/territory/expand 폐기. 영역 확장 = 타워 건설.
+        // 기본 클래스 'generic', tier 1, claimRadiusM = radius. 호출자 시그니처는 보존.
         public void ExpandTerritory(string userId, double lat, double lng, float radius, Action<string> cb, Action<string> err = null)
-            => Post("/api/territory/expand", new ReqExpand { userId = userId, lat = lat, lng = lng, radius = radius }, cb, err);
+            => Post("/api/towers/place", new ReqPlaceTowerBeta {
+                userId = userId, lat = lat, lng = lng,
+                towerClass = "generic", tier = 1, claimRadiusM = (int)radius
+            }, cb, err);
 
         public void CheckIntrusion(string userId, double lat, double lng, Action<string> cb, Action<string> err = null)
             => Post("/api/territory/check-intrusion", new ReqUserLocation { userId = userId, lat = lat, lng = lng }, cb, err);
@@ -104,17 +109,49 @@ namespace GuardianAR
         public void AttackFixedGuardian(string attackerId, string fixedGuardianId, bool arMode, bool ultActivated, Action<string> cb, Action<string> err = null)
             => Post("/api/battle/attack-fixed-guardian", new ReqAttackFG { attackerId = attackerId, fixedGuardianId = fixedGuardianId, arMode = arMode, ultActivated = ultActivated }, cb, err);
 
+        // β 모델: /api/territory/place-guardian 폐기. 추가 타워 = 새 영역 건설.
+        // PlaceFixedGuardianRequest의 lat/lng/guardianType만 사용.
         public void PlaceFixedGuardian(PlaceFixedGuardianRequest req, Action<string> cb, Action<string> err = null)
-            => Post("/api/territory/place-guardian", req, cb, err);
+            => Post("/api/towers/place", new ReqPlaceTowerBeta {
+                userId = req.userId, lat = req.lat, lng = req.lng,
+                towerClass = (req.guardianType == "production") ? "production" : "generic",
+                tier = 1, claimRadiusM = 100
+            }, cb, err);
 
-        // 신 API — 13종 타워 배치 (towerClass + tier 모델)
-        public void PlaceTower(string userId, string territoryId, string towerClass, int tier,
-                               string grantId, Action<string> cb, Action<string> err = null)
+        // 신 API — β 모델 타워 배치 (위치 + claimRadiusM + towerClass)
+        public void PlaceTower(string userId, double lat, double lng, string towerClass, int tier,
+                               int claimRadiusM, string grantId, Action<string> cb, Action<string> err = null)
             => Post("/api/towers/place",
-                    new ReqPlaceTower {
-                        userId = userId, territoryId = territoryId,
-                        towerClass = towerClass, tier = tier, grantId = grantId
+                    new ReqPlaceTowerBeta {
+                        userId = userId, lat = lat, lng = lng,
+                        towerClass = towerClass, tier = tier,
+                        claimRadiusM = claimRadiusM, grantId = grantId
                     }, cb, err);
+
+        // ─── 속국(vassal) 계약 ────────────────────────────────────────
+        public void ProposeVassal(string vassalUserId, string lordTerritoryId, double lat, double lng,
+                                  int claimRadiusM, string towerClass, float tributeToLordPct,
+                                  Action<string> cb, Action<string> err = null)
+            => Post("/api/vassal/propose", new ReqVassalPropose {
+                vassalUserId = vassalUserId, lordTerritoryId = lordTerritoryId,
+                lat = lat, lng = lng, claimRadiusM = claimRadiusM,
+                towerClass = towerClass, tributeToLordPct = tributeToLordPct
+            }, cb, err);
+
+        public void AcceptVassal(string lordUserId, string contractId, Action<string> cb, Action<string> err = null)
+            => Post("/api/vassal/accept", new ReqVassalRespond { lordUserId = lordUserId, contractId = contractId }, cb, err);
+
+        public void RejectVassal(string lordUserId, string contractId, Action<string> cb, Action<string> err = null)
+            => Post("/api/vassal/reject", new ReqVassalRespond { lordUserId = lordUserId, contractId = contractId }, cb, err);
+
+        public void DissolveVassal(string userId, string contractId, Action<string> cb, Action<string> err = null)
+            => Post("/api/vassal/dissolve", new ReqVassalDissolve { userId = userId, contractId = contractId }, cb, err);
+
+        public void GetVassalIncoming(string userId, Action<string> cb, Action<string> err = null)
+            => Get($"/api/vassal/incoming/{userId}", cb, err);
+
+        public void GetMyVassalContracts(string userId, Action<string> cb, Action<string> err = null)
+            => Get($"/api/vassal/my/{userId}", cb, err);
 
         public void GetTowerClasses(Action<string> cb, Action<string> err = null)
             => Get("/api/towers/classes", cb, err);
@@ -195,4 +232,17 @@ namespace GuardianAR
         public string userId; public string territoryId; public string towerClass;
         public int tier; public string grantId;
     }
+    // β 모델용 (위치 기반 + claimRadiusM)
+    [System.Serializable] public class ReqPlaceTowerBeta {
+        public string userId; public double lat; public double lng;
+        public string towerClass; public int tier; public int claimRadiusM;
+        public string grantId;
+    }
+    [System.Serializable] public class ReqVassalPropose {
+        public string vassalUserId; public string lordTerritoryId;
+        public double lat; public double lng;
+        public int claimRadiusM; public string towerClass; public float tributeToLordPct;
+    }
+    [System.Serializable] public class ReqVassalRespond { public string lordUserId; public string contractId; }
+    [System.Serializable] public class ReqVassalDissolve { public string userId; public string contractId; }
 }

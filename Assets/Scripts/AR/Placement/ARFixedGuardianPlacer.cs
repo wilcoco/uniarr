@@ -372,11 +372,14 @@ namespace GuardianAR
                 }
             }
 
+            // β 모델: territoryId가 아닌 GPS 위치 + claimRadiusM로 호출.
+            // 기본 반경 100m (AR 모드 단순화 — 추후 슬라이더 추가 가능).
             ApiManager.Instance.PlaceTower(
                 GameManager.Instance.UserId,
-                selectedTerritoryId,
+                selectedGPSPos.lat, selectedGPSPos.lng,
                 selectedClass,
                 selectedTier,
+                100,                       // claimRadiusM 기본값
                 activeGrant?.id,
                 json =>
                 {
