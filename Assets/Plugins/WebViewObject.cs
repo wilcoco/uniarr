@@ -1828,7 +1828,10 @@ public class WebViewObject : MonoBehaviour
             bg.transform.SetAsLastSibling();
         }
         if (hasFocus) {
+#if ENABLE_LEGACY_INPUT_MANAGER
             inputString += Input.inputString;
+#endif
+            // New Input System only: 키보드 입력은 webview에 안 들어가지만 NRE/Exception은 안 발생.
         }
         for (;;) {
             if (webView == IntPtr.Zero)
@@ -1920,6 +1923,7 @@ public class WebViewObject : MonoBehaviour
     {
         if (webView == IntPtr.Zero || !visibility)
             return;
+#if ENABLE_LEGACY_INPUT_MANAGER
         switch (Event.current.type) {
         case EventType.MouseDown:
         case EventType.MouseUp:
@@ -1974,6 +1978,42 @@ public class WebViewObject : MonoBehaviour
             }
             break;
         }
+#else
+        // New Input System 전용: legacy Input 클래스 호출 금지. IMGUI Event.current로 대체.
+        // 키보드 입력은 webview로 안 보내짐(에디터 한정 제약). Repaint(렌더)는 정상.
+        var ev = Event.current;
+        Vector3 mp = new Vector3(ev.mousePosition.x, Screen.height - ev.mousePosition.y, 0);
+        switch (ev.type) {
+        case EventType.MouseDown:
+        case EventType.MouseUp:
+            hasFocus = rect.Contains(mp);
+            break;
+        }
+        switch (ev.type) {
+        case EventType.MouseMove:
+        case EventType.MouseDown:
+        case EventType.MouseDrag:
+        case EventType.MouseUp:
+        case EventType.ScrollWheel:
+            if (hasFocus) {
+                int mouseState = 0;
+                if (ev.type == EventType.MouseDown && ev.button == 0) mouseState = 1;
+                else if (ev.type == EventType.MouseDrag && ev.button == 0) mouseState = 2;
+                else if (ev.type == EventType.MouseUp && ev.button == 0) mouseState = 3;
+                float scrollY = (ev.type == EventType.ScrollWheel) ? -ev.delta.y : 0;
+                _CWebViewPlugin_SendMouseEvent(webView, (int)(mp.x - rect.x), (int)(mp.y - rect.y), scrollY, mouseState);
+            }
+            break;
+        case EventType.Repaint:
+            if (texture != null) {
+                Matrix4x4 m = GUI.matrix;
+                GUI.matrix = Matrix4x4.TRS(new Vector3(0, Screen.height, 0), Quaternion.identity, new Vector3(1, -1, 1));
+                Graphics.DrawTexture(rect, texture);
+                GUI.matrix = m;
+            }
+            break;
+        }
+#endif
     }
 #elif UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
     void OnApplicationFocus(bool focus)
@@ -2003,7 +2043,9 @@ public class WebViewObject : MonoBehaviour
         }
         if (hasFocus)
         {
+#if ENABLE_LEGACY_INPUT_MANAGER
             inputString += Input.inputString;
+#endif
         }
         for (;;)
         {
@@ -2091,6 +2133,7 @@ public class WebViewObject : MonoBehaviour
     {
         if (webView == IntPtr.Zero || !visibility)
             return;
+#if ENABLE_LEGACY_INPUT_MANAGER
         switch (Event.current.type)
         {
         case EventType.MouseDown:
@@ -2143,6 +2186,46 @@ public class WebViewObject : MonoBehaviour
             }
             break;
         }
+#else
+        // New Input System 전용: legacy Input 클래스 호출 금지. IMGUI Event.current로 대체.
+        // 키 입력은 webview에 안 들어가지만 마우스/렌더는 정상 동작.
+        var ev = Event.current;
+        Vector3 mp = new Vector3(ev.mousePosition.x, Screen.height - ev.mousePosition.y, 0);
+        switch (ev.type)
+        {
+        case EventType.MouseDown:
+        case EventType.MouseUp:
+            hasFocus = rect.Contains(mp);
+            break;
+        }
+        switch (ev.type)
+        {
+        case EventType.MouseMove:
+        case EventType.MouseDown:
+        case EventType.MouseDrag:
+        case EventType.MouseUp:
+        case EventType.ScrollWheel:
+            if (hasFocus)
+            {
+                int mouseState = 0;
+                if (ev.type == EventType.MouseDown && ev.button == 0) mouseState = 1;
+                else if (ev.type == EventType.MouseDrag && ev.button == 0) mouseState = 2;
+                else if (ev.type == EventType.MouseUp && ev.button == 0) mouseState = 3;
+                float scrollY = (ev.type == EventType.ScrollWheel) ? -ev.delta.y : 0;
+                _CWebViewPlugin_SendMouseEvent(webView, (int)(mp.x - rect.x), (int)(mp.y - rect.y), scrollY, mouseState);
+            }
+            break;
+        case EventType.Repaint:
+            if (texture != null)
+            {
+                Matrix4x4 m = GUI.matrix;
+                GUI.matrix = Matrix4x4.TRS(new Vector3(0, Screen.height, 0), Quaternion.identity, new Vector3(1, -1, 1));
+                Graphics.DrawTexture(rect, texture);
+                GUI.matrix = m;
+            }
+            break;
+        }
+#endif
     }
 #endif
 }
